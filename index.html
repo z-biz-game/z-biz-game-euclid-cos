@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#171310">
+<meta name="description" content="割金 · EUCLID：欧几里得博弈。一根 a×b 的金条，每次从长边切下若干块 b×b 的方金，正好铺满的人赢。每个局面的必胜/必败、唯一胜口与帕数由穷举递归与 φ 整数判据两条独立路线量出，棋书烘焙进页，浏览器里不搜索。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171310'/%3E%3Crect x='3' y='9' width='18' height='14' fill='%23d9a441'/%3E%3Crect x='3' y='9' width='14' height='14' fill='%23b8863b'/%3E%3Crect x='24' y='9' width='5' height='14' fill='%236d4f22'/%3E%3Cpath d='M21 4 L21 28' stroke='%23f3e7cf' stroke-width='1.4' stroke-dasharray='3 2'/%3E%3C/svg%3E">
+<title>割金 · EUCLID</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 class="brand"><span class="brand-mark">◺</span>割金<small>EUCLID · 欧几里得博弈</small></h1>
+  <nav class="modes" id="modes" aria-label="模式">
+    <button type="button" data-mode="campaign">战役</button>
+    <button type="button" data-mode="daily">每日</button>
+    <button type="button" data-mode="random">随机</button>
+  </nav>
+  <p class="totals" id="totals"></p>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <canvas id="board" aria-label="金条：a×b 的单位方格，虚线是 φ·b 的黄金参考线"></canvas>
+    <div class="ks" id="ks" role="group" aria-label="切几块"></div>
+    <p class="hint-line" id="hintline"></p>
+    <div class="curtain" id="curtain" hidden>
+      <div class="curtain-card">
+        <p class="stars" id="stars"></p>
+        <h2 id="verdict"></h2>
+        <p class="tally" id="tally"></p>
+        <div class="curtain-actions">
+          <button type="button" id="again">再来一次</button>
+          <button type="button" id="next" class="primary">下一关</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <p class="crumbs" id="crumbs"></p>
+    <dl class="readout" id="readout"></dl>
+    <div class="controls">
+      <button type="button" id="hint">提示胜口</button>
+      <button type="button" id="undo">撤销一手</button>
+      <button type="button" id="autowin">照表收局</button>
+      <button type="button" id="restart">重开</button>
+      <button type="button" id="share">分享这一局</button>
+    </div>
+    <p class="legend">在金条上按下并向右拖：高亮的整块就是要切下的方金，松口即切；也可以直接点下面的 <b>k</b> 按钮或按数字键。
+      竖直虚线是 <b>φ·b</b> —— 金条右端落在它左边就是必败，落在右边就是必胜（<code>a²&lt;ab+b²</code>，纯整数判据）。</p>
+    <details class="drawer" id="drawer">
+      <summary>这一局的证明 <span id="proofcount"></span></summary>
+      <ol class="proof" id="proof"></ol>
+      <p class="proof-more" id="proofmore"></p>
+    </details>
+    <details class="about">
+      <summary>屏幕上的数字从哪来</summary>
+      <p>本仓是双人 impartial 博弈，难度不是“步数”而是<b>博弈论价值</b>：<code>js/core/retro.js</code>
+      对 {1≤b≤a≤60} 的 1830 个局面做自底向上穷举，<code>js/core/golden.js</code> 用<b>不含浮点</b>的整数判据
+      <code>a²−ab−b²</code> 独立再判一次。<b>两条路线逐局面比对通过才写文件</b>，
+      1≤b≤a≤1200 的 720600 对上零分歧（<code>node tools/bake.mjs</code> 会打印这些数）。</p>
+      <p>对手不搜索：它只查 <code>tools/bake.mjs</code> 烘进 <code>js/data/lots.js</code> 的那张棋书。
+      越出棋书的局面查表会<b>抛异常</b>，绝不现场算。</p>
+      <p>每一关都是先手必胜、且不是“只有一步可走”：<code>q=⌊a/b⌋≥2</code>（至少两个可切的口）且帕数≥3。
+      <code>猜中率 1/q</code> 就是随机乱切赢下来的精确概率。</p>
+      <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe">清空存档</button></p>
+    </details>
+  </aside>
+</main>
+
+<p class="toast" id="toast" hidden></p>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

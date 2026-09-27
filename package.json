@@ -1,0 +1,40 @@
+{
+  "name": "euclid-cos",
+  "version": "1.0.0",
+  "description": "割金 · EUCLID — 浏览器原生的欧几里得博弈。每个矩形的必胜/必败由穷举递归与 φ 整数判据两条独立路线量出，胜利着法唯一（(k, k-1) 型阶梯论证），棋书烘焙进页。",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs 5221",
+    "electron": "electron .",
+    "bake": "node tools/bake.mjs",
+    "check": "for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
+    "unit": "for f in test/*.test.mjs; do node \"$f\" || exit 1; done",
+    "test": "npm run check && npm run unit",
+    "verify": "bash tools/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "puzzle",
+    "euclid-game",
+    "euclidean-algorithm",
+    "golden-ratio",
+    "impartial-game",
+    "continued-fraction",
+    "retrograde-analysis",
+    "zero-dependency",
+    "electron"
+  ],
+  "author": "z-biz-game",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "build": {
+    "appId": "com.zbiz.euclid",
+    "productName": "Euclid",
+    "mac": { "category": "public.app-category.puzzle-games" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" }
+  }
+}

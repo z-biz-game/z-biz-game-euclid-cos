@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The rules, the retrograde book, the φ algebra and the shipped campaign are all pure ES
+  # modules: no browser, no install step, no dependency resolution anywhere in this repo.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Suites
+        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+
+  # js/data/lots.js is GENERATED (tools/bake.mjs: bottom-up grid + φ algebra reconciled
+  # state-for-state, then the campaign curated out of it), so it can drift from the code that
+  # produced it. Two checks: re-baking must reproduce the shipped file byte for byte apart from
+  # the BAKED_AT line, and the page that ships must still be the page the tests were written
+  # against (a shell with no canvas is a 404-shaped success).
+  book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The shipped book re-derives from the bake (timestamp line aside)
+        run: |
+          cp js/data/lots.js /tmp/shipped.js
+          node tools/bake.mjs
+          norm() { sed -E 's/^export const BAKED_AT = .*/export const BAKED_AT = "T";/' "$1"; }
+          norm /tmp/shipped.js > /tmp/a.js
+          norm js/data/lots.js > /tmp/b.js
+          cmp /tmp/a.js /tmp/b.js
+      - name: The shell is a real page
+        run: test -f index.html && grep -q '<canvas' index.html && grep -q 'js/main.js' index.html
+
+  # The shell is only proven by driving a real page with real mouse events: the canvas hit test,
+  # the k buttons, the save file, the 必败 panel and the φ·b guide line all live behind
+  # `window.euclid` and the pixels of one canvas.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 420
+        run: bash tools/verify.sh

@@ -1,0 +1,55 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No bundler, no install, no build step: the game ships plain ES modules, so the site is a
+      # file copy. Only index.html + css/ + js/ are reachable from the page — keep the static
+      # server, the electron shell, the bake tool, the tests and the CI config out of the
+      # artifact. The whole 1830-position book, the 32-lot campaign and the daily seeds are baked
+      # into js/data/lots.js by tools/bake.mjs and shipped as a source file like any other, so the
+      # browser never solves anything to print a verdict: it reads a table.
+      - name: Assemble static site
+        run: |
+          mkdir _site
+          cp index.html _site/
+          cp -r css js _site/
+      - name: The artifact is self-contained
+        run: |
+          test -f _site/index.html
+          test -f _site/js/main.js
+          test -f _site/js/data/lots.js
+          test -f _site/css/game.css
+          test ! -e _site/server.cjs
+          test ! -e _site/tools
+          grep -q '<canvas' _site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
