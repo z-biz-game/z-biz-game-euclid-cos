@@ -503,6 +503,11 @@ const REC_HEAD = `const rows = [];
     const D = (id) => document.getElementById(id);
     const c = window.euclid;
     const TXT = (id) => String(D(id).textContent);
+    // 站点在 GitHub Pages 上挂在 /<repo>/ 前缀下，所以测试里 import 模块不能用斜杠开头的说明符：
+    // 那是 origin 根，本地 server 恰好以仓库为根，看不出问题，发上去就 404 —— 而一个 404 的动态
+    // import 把整段页内脚本拦腰抛断，后面的断言一条都不跑。以文档自己的 baseURI 为基就能在任何
+    // 前缀下解析到同一份发货代码。
+    const MOD = (p) => import(new URL(p, document.baseURI).href);
     const CELLS = () => { const cv = D('board'); const g = cv.getContext('2d'); const d = g.getImageData(0, 0, cv.width, cv.height).data;
       let gold = 0, lit = 0;
       for (let i = 0; i < d.length; i += 4) { if (d[i + 3] === 0) continue; if (d[i] > 110 && d[i] > d[i + 2] + 40) gold++; if (d[i] > 60 || d[i + 1] > 60 || d[i + 2] > 60) lit++; }
@@ -652,7 +657,7 @@ const SCENARIOS = {
     rec('每日的标题带着今天的日期', /^每日金条 · \\d{4}-\\d{2}-\\d{2}$/.test(c.state.label), c.state.label);
     rec('每日题也是先手必胜、也有唯一胜口', c.state.verdict === '必胜' && c.state.lotK >= 1 && c.state.par === c.state.lotDepth, c.state);
     // the same-day determinism the docs claim, on three FIXED dates (no clock involved)
-    const lib = await import('/js/core/library.js');
+    const lib = await MOD('js/core/library.js');
     const fixed = ['2024-02-29', '2026-01-01', '2026-12-31'].map((d) => {
       const a = lib.dailyLot(d); const b = lib.dailyLot(d);
       return { d, same: a.id === b.id && a.a === b.a && a.b === b.b && a.k === b.k && a.depth === b.depth, key: a.a + ':' + a.b };
