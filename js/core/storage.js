@@ -31,11 +31,43 @@ export function requireBackend() {
   return window.localStorage;
 }
 
-function backend() {
+function available() {
   try {
-    return requireBackend();
+    requireBackend();
+    return true;
   } catch {
-    return null; // memory-only session: the game still plays, it just forgets
+    return false; // memory-only session: the game still plays, it just forgets
+  }
+}
+
+// 整个仓只准这四个函数碰持久层 —— 收口在一处，"读回来的是不是同一份 JSON"就只有一个地方要证。
+// 后端拒绝（隐私窗口、无 window、配额）时它们给 null/false，而不是抛：存档丢了不许把页面搞崩。
+function readItem(key) {
+  if (!available()) return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeItem(key, value) {
+  if (!available()) return false;
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false; // 配额或被拦：这一次会话就留在内存里
+  }
+}
+
+function dropItem(key) {
+  if (!available()) return false;
+  try {
+    window.localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -46,12 +78,53 @@ function count(v) {
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// 一手棋之后长边严格变小（切完剩 a-kb < a，再把 b 换边），而发货棋书的边界是 60 ——
+// 所以任何一局的总手数不可能超过 60。超过 60 的 best 不是"这人打得久"，是脏数据。
+const MAX_PLIES = 60;
+
+// 第二段解码：一条记录自己判自己，坏的那条丢掉，别让整份存档陪葬。
+function decodeRecord(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const rec = {
+    plays: count(raw.plays),
+    won: !!raw.won,
+    lastWon: !!raw.lastWon,
+    lastPlies: Math.min(count(raw.lastPlies), MAX_PLIES),
+    hints: count(raw.hints),
+    clean: !!raw.clean,
+  };
+  const best = count(raw.best);
+  if (best && best <= MAX_PLIES) rec.best = best;
+  // 一条没有任何信号的记录（没打过、没赢过、没帕数）不值得占键：留着它只会让"通关数"错。
+  if (!rec.plays && !rec.won && !rec.best && !rec.hints) return null;
+  return rec;
+}
+
+function decodeDaily(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return { id: String(raw.id ?? ''), won: !!raw.won };
+}
+
+// 设置只有这几个键会被读回来，且各自按类型解码：一个脏的 muted 不该让整个存档变成脏的。
+export const SETTINGS = { muted: Boolean };
+
+function decodeSettings(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [k, cast] of Object.entries(SETTINGS)) {
+    if (raw[k] === undefined) continue;
+    out[k] = cast(raw[k]);
+  }
+  return out;
+}
+
 function blank() {
   return {
     records: {},
     daily: {},
     unlocked: 1,
     stats: { plays: 0, wins: 0, losses: 0, plies: 0, hints: 0 },
+    settings: {},
   };
 }
 
@@ -59,26 +132,34 @@ let cache = null;
 
 function load() {
   if (cache) return cache;
-  const ls = backend();
-  const raw = ls ? ls.getItem(KEY) : null;
+  const raw = readItem(KEY);
   if (raw) {
     try {
       const p = JSON.parse(raw);
-      if (p && typeof p === 'object') {
+      if (p && typeof p === 'object' && !Array.isArray(p)) {
         const base = blank();
-        const s = (p.stats && typeof p.stats === 'object') ? p.stats : {};
+        const s = (p.stats && typeof p.stats === 'object' && !Array.isArray(p.stats)) ? p.stats : {};
+        const records = {};
+        if (p.records && typeof p.records === 'object' && !Array.isArray(p.records)) {
+          for (const [id, entry] of Object.entries(p.records)) {
+            const rec = decodeRecord(entry);
+            if (rec) records[id] = rec;
+          }
+        }
         const daily = {};
-        if (p.daily && typeof p.daily === 'object') {
+        if (p.daily && typeof p.daily === 'object' && !Array.isArray(p.daily)) {
           // Day keys are the streak's input, so a corrupt key is dropped rather than counted:
           // accepting "2026-9-3" or "yesterday" would silently break shiftDay's walk.
-          for (const [k, v] of Object.entries(p.daily)) {
-            if (DAY_RE.test(k) && v && typeof v === 'object') daily[k] = { id: String(v.id ?? ''), won: !!v.won };
+          for (const [k, entry] of Object.entries(p.daily)) {
+            const day = DAY_RE.test(k) ? decodeDaily(entry) : null;
+            if (day) daily[k] = day;
           }
         }
         cache = {
-          records: p.records && typeof p.records === 'object' ? p.records : base.records,
+          records,
           daily,
           unlocked: count(p.unlocked) || base.unlocked,
+          settings: decodeSettings(p.settings),
           stats: {
             plays: count(s.plays),
             wins: count(s.wins),
@@ -98,14 +179,7 @@ function load() {
 }
 
 function persist() {
-  const ls = backend();
-  if (!ls) return false;
-  try {
-    ls.setItem(KEY, JSON.stringify(cache));
-    return true;
-  } catch {
-    return false; // quota or a blocked store: the session simply stays in memory
-  }
+  return writeItem(KEY, JSON.stringify(cache));
 }
 
 export const store = {
@@ -113,6 +187,19 @@ export const store = {
   get stats() { return load().stats; },
   get daily() { return load().daily; },
   get unlocked() { return load().unlocked; },
+  get settings() { return load().settings; },
+
+  // 只认 SETTINGS 里列过的键：写一个没听过的键名，得到的不是"存下来了"而是一个异常，
+  // 否则拼错一个字母就会造出一个没人读的第二个真相源。
+  setSetting(key, value) {
+    if (!Object.prototype.hasOwnProperty.call(SETTINGS, key)) {
+      throw new RangeError(`setSetting: 不认识的设置键 ${JSON.stringify(String(key))}`);
+    }
+    const s = load();
+    s.settings[key] = SETTINGS[key](value);
+    persist();
+    return s.settings[key];
+  },
 
   record(id) {
     return load().records[id] || null;
@@ -215,14 +302,7 @@ export const store = {
 
   reset() {
     cache = blank();
-    const ls = backend();
-    if (ls) {
-      try {
-        ls.removeItem(KEY);
-      } catch {
-        /* nothing was ever persisted */
-      }
-    }
+    dropItem(KEY);
     return cache;
   },
 };
@@ -231,9 +311,9 @@ export const store = {
 // `false` here means the store REFUSED, not that it happens to be empty.
 export function persistent() {
   try {
-    const ls = requireBackend();
-    ls.setItem(PROBE, '1');
-    ls.removeItem(PROBE);
+    requireBackend();
+    window.localStorage.setItem(PROBE, '1');
+    window.localStorage.removeItem(PROBE);
     return true;
   } catch {
     return false;

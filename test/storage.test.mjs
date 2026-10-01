@@ -12,6 +12,8 @@
 
 import { run, test, ok, eq } from '../tools/harness.mjs';
 import { dayDistance, shiftDay } from '../js/core/rng.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 let n = 0;
 const KEY = 'euclid.save.v1';
@@ -249,10 +251,77 @@ test('storage: 写进去的 JSON 不带函数、不带 undefined，重新解析�
   const raw = ls.getItem(KEY);
   ok(raw.length < 4000, `存档不该膨胀：${raw.length} 字节`);
   const again = JSON.parse(raw);
-  eq(Object.keys(again).sort(), ['daily', 'records', 'stats', 'unlocked'], '顶层形状就是这四样');
+  eq(Object.keys(again).sort(), ['daily', 'records', 'settings', 'stats', 'unlocked'], '顶层形状就是这五样');
   eq(again.records.r.best, undefined, '输了的记录没有 best 字段');
   eq(again.records.r.lastPlies, 7);
   eq(again.unlocked, 3);
+});
+
+test('storage: 两段式解码 —— 一条脏记录只脏它自己，三个兄弟照读', async () => {
+  const payload = {
+    records: {
+      good: { plays: 2, won: true, best: 5, lastPlies: 5, hints: 1 },
+      str: 'garbage', nul: null, arr: [1, 2], empty: {}, quiet: { plays: 0, won: false },
+      huge: { plays: 1, won: true, best: 9999, lastPlies: 120 },
+      wrong: { plays: 'x', won: 'yes', best: -3, lastPlies: null, hints: {} },
+    },
+  };
+  const ls = fakeLS(new Map([[KEY, JSON.stringify(payload)]]));
+  const m = await fresh(ls);
+  eq(Object.keys(m.store.records).sort(), ['good', 'huge', 'wrong'],
+    '字符串/null/数组/空对象/零信号都整条丢掉，其余逐条留');
+  eq(m.store.record('good').best, 5, '坏邻居不该拖累好的');
+  eq(m.store.record('huge').best, undefined, '9999 帕不是"打得久"，是脏数据');
+  eq(m.store.record('huge').lastPlies, 60, 'lastPlies 也压到上界');
+  eq(m.store.record('wrong'), { plays: 0, won: true, lastWon: false, lastPlies: 0, hints: 0, clean: false },
+    '类型不对的字段逐个修，不整条丢');
+  eq(m.store.totals().cleared, 3, 'good + huge + wrong(won:"yes"→true) —— 类型修复后的真相');
+});
+
+test('storage: 手数上界是从棋书推出来的，不是拍脑袋的魔数', async () => {
+  // 每一手都让长边严格变小，发货棋书的边界是 60 ⇒ 任何一局的总手数 < 60；60 是宽松上界。
+  const m = await fresh(fakeLS());
+  eq(m.store.finish('cap', { won: true, plies: 61, hints: 0 }).best, 61, '写入端不假装能救脏数据');
+  const ls2 = fakeLS(new Map([[KEY, JSON.stringify({ records: { cap: { plays: 1, won: true, best: 61 } } })]]));
+  const m2 = await fresh(ls2);
+  eq(m2.store.record('cap').best, undefined, '读回来时越界的 best 必须被丢掉');
+});
+
+test('storage: 设置段往返 —— 静音过了一次重载还是静音，陌生键直接抛', async () => {
+  const ls = fakeLS();
+  const a = await fresh(ls);
+  eq(a.store.settings, {}, '新会话没有设置');
+  eq(a.store.setSetting('muted', true), true);
+  const b = await fresh(ls);
+  eq(b.store.settings.muted, true, '刷新后必须还记得');
+  eq(JSON.parse(ls.getItem(KEY)).settings.muted, true, '磁盘上真的落了这一位');
+  let err = null;
+  try { b.store.setSetting('mutedd', true); } catch (e) { err = e; }
+  ok(err && /不认识的设置键/.test(err.message), '拼错的键必须炸，不然就是第二个真相源');
+  eq(b.store.settings.muted, true, '抛异常那次不该改动已存的设置');
+  const dirty = fakeLS(new Map([[KEY, JSON.stringify({ settings: { muted: true, evil: 'x' } })]]));
+  const c = await fresh(dirty);
+  eq(Object.keys(c.store.settings), ['muted'], '没列进 SETTINGS 的键不许被读回来');
+});
+
+test('storage: 全仓只有 storage.js 碰 localStorage', () => {
+  const files = new Set();
+  const detail = [];
+  const walk = (dir) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) { walk(p); continue; }
+      if (!p.endsWith('.js')) continue;
+      const rel = path.relative(path.join(import.meta.dirname, '..'), p);
+      fs.readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
+        if (!/localStorage/.test(line)) return;
+        files.add(rel);
+        detail.push(`${rel}:${i + 1} ${line.trim()}`);
+      });
+    }
+  };
+  walk(path.join(import.meta.dirname, '..', 'js'));
+  eq([...files], ['js/core/storage.js'], `存档收口破了，别的地方直接读了持久层:\n    ${detail.join('\n    ')}`);
 });
 
 await run();
