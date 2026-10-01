@@ -17,6 +17,7 @@ import { solve as solveLive, table as tableLive } from './core/retro.js';
 import { isLoss as phiIsLoss, winningK as phiWinningK, depth as phiDepth, reconcile as phiReconcile } from './core/golden.js';
 import { persistent, store } from './core/storage.js';
 import { todayKey } from './core/rng.js';
+import { pwaStatus, registerServiceWorker } from './pwa.js';
 import { createView } from './view.js';
 
 const VERSION = 1;
@@ -467,6 +468,11 @@ try {
   toast('复核失败：' + err.message, true);
 }
 
+// ------------------------------------------------------------------ PWA
+// 注册发生在首屏渲染之后：service worker 抢在第一次绘制前安装，会让 @boot 的资产计数里
+// 混进一次"缓存命中"，那是量具的噪声而不是产品的行为。失败不冒泡（js/pwa.js 自己收口）。
+registerServiceWorker();
+
 // ------------------------------------------------------------------ the harness hook
 const api = {
   version: VERSION,
@@ -553,6 +559,7 @@ const api = {
   golden: () => phiReconcile(BOOK.bound),
   recomputeBook: () => recomputeBook(BOOK),
   verifyShipped: () => verifyPool(),
+  pwa: pwaStatus,
 };
 window.euclid = api;
 console.log(`[log] euclid v${VERSION} ready · book ${BOOK.states} 局面 · lots ${lots.length} · 分歧 ${game.reconcileBad}`);
