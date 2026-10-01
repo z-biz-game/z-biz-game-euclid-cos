@@ -17,13 +17,17 @@ import { solve as solveLive, table as tableLive } from './core/retro.js';
 import { isLoss as phiIsLoss, winningK as phiWinningK, depth as phiDepth, reconcile as phiReconcile } from './core/golden.js';
 import { persistent, store } from './core/storage.js';
 import { todayKey } from './core/rng.js';
+import { createAudio } from './core/audio.js';
+import { createClock } from './core/clock.js';
+import { mountHud } from './hud.js';
 import { pwaStatus, registerServiceWorker } from './pwa.js';
 import { createView } from './view.js';
 
 const VERSION = 1;
 const IDS = ['board', 'ks', 'hintline', 'curtain', 'stars', 'verdict', 'tally', 'again', 'next', 'crumbs',
   'readout', 'hint', 'undo', 'autowin', 'restart', 'share', 'modes', 'totals', 'proof', 'proofcount',
-  'proofmore', 'wipe', 'toast'];
+  'proofmore', 'wipe', 'toast', 'drawer', 'paused', 'resume', 'help', 'pause', 'mute', 'fullscreen',
+  'tutorial', 'tutclose', 'tutnever'];
 const el = {};
 for (const id of IDS) el[id] = document.getElementById(id);
 
@@ -39,7 +43,15 @@ const game = {
   index: 1,
   settled: false,
   record: null,
+  paused: false,
 };
+
+// ------------------------------------------------- 会话时钟 / 声音 / 系统条（设备级，与棋无关）
+// clock 是这一仓唯一"自己会走"的时间：提示条存活期与清空存档的确认窗口都挂在它上面，
+// 于是暂停能真的冻结它们、切后台不会被一次 5 秒的空档直接把计时器烧完（js/core/clock.js）。
+const clock = createClock();
+const audio = createAudio({ muted: store.settings.muted === true });
+const hud = mountHud({ el, game, clock, audio, store, toast });
 
 // ------------------------------------------------------------------ routing
 function routeTo(hash) {
@@ -213,13 +225,19 @@ function render() {
 }
 
 // ------------------------------------------------------------------ feedback
+const TOAST_MS = 2600;
 let toastTimer = null;
 function toast(msg, bad = false) {
   el.toast.textContent = msg;
   el.toast.hidden = false;
   el.toast.classList.toggle('bad', !!bad);
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 2600);
+  if (toastTimer) clock.cancel(toastTimer);
+  // 走会话时钟而不是 setTimeout：暂停时这条提示不该继续消失，切后台那 5 秒也不该把它烧完。
+  toastTimer = clock.after(TOAST_MS, () => {
+    toastTimer = null;
+    el.toast.hidden = true;
+  });
+  hud.requestFrame();
 }
 
 // ------------------------------------------------------------------ the moves
@@ -228,6 +246,7 @@ function settle(result) {
     game.match = result.state;
     clearKPreview();
     render();
+    audio.nope();
     toast(result.rejected, true);
     return result;
   }
@@ -240,6 +259,9 @@ function settle(result) {
     if (game.mode === 'daily') store.markDaily(game.lot.day, game.lot.id, { won });
     if (won && game.mode === 'campaign') store.unlock(Math.min(lots.length, game.index + 1));
     game.match = { ...game.match, kPreview: null };
+    if (won) audio.win(); else audio.loss();
+  } else if (game.match.status === 'playing') {
+    audio.cut();
   }
   render();
   return result;
@@ -272,6 +294,7 @@ function autoWin() {
     const won = st.status === 'won';
     game.record = store.finish(game.lot.id, { won, plies: st.plies, hints: game.hints });
     if (game.mode === 'daily') store.markDaily(game.lot.day, game.lot.id, { won });
+    if (won) audio.win(); else audio.loss();
   }
   clearKPreview();
   render();
@@ -296,7 +319,7 @@ function undo() {
   game.settled = r.state.status === 'playing' ? false : game.settled;
   clearKPreview();
   render();
-  if (r.rejected) toast(r.rejected, true);
+  if (r.rejected) { audio.nope(); toast(r.rejected, true); }
   return r.state;
 }
 
@@ -391,19 +414,25 @@ el.modes.addEventListener('click', (ev) => {
 });
 
 let wipeArmed = false;
+let wipeTimer = null;
+const WIPE_MS = 4000;
+function disarmWipe() {
+  wipeArmed = false;
+  el.wipe.textContent = '清空存档';
+}
 el.wipe.addEventListener('click', () => {
   if (!wipeArmed) {
     wipeArmed = true;
     el.wipe.textContent = '再点一次确认清空';
     toast('再点一次就清空这台设备上的存档', true);
-    setTimeout(() => {
-      wipeArmed = false;
-      el.wipe.textContent = '清空存档';
-    }, 4000);
+    // 也是会话时钟：暂停的 4 秒不该把二次确认悄悄取消掉。
+    if (wipeTimer) clock.cancel(wipeTimer);
+    wipeTimer = clock.after(WIPE_MS, () => { wipeTimer = null; disarmWipe(); });
+    hud.requestFrame();
     return;
   }
-  wipeArmed = false;
-  el.wipe.textContent = '清空存档';
+  if (wipeTimer) { clock.cancel(wipeTimer); wipeTimer = null; }
+  disarmWipe();
   store.reset();
   game.record = null;
   render();
@@ -511,6 +540,7 @@ const api = {
       line: st.line,
       kPreview: st.kPreview || null,
       hints: game.hints,
+      paused: !!game.paused,
       persist: persistent(),
       verdict: cls ? cls.verdict : null,
       value: cls ? cls.value : null,
@@ -560,6 +590,7 @@ const api = {
   recomputeBook: () => recomputeBook(BOOK),
   verifyShipped: () => verifyPool(),
   pwa: pwaStatus,
+  hud: () => hud.status(),
 };
 window.euclid = api;
 console.log(`[log] euclid v${VERSION} ready · book ${BOOK.states} 局面 · lots ${lots.length} · 分歧 ${game.reconcileBad}`);

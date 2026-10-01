@@ -129,6 +129,10 @@ body::before {
 button {
   font: inherit; color: var(--c-ink); background: var(--c-tray);
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  /* 44×44 是拇指的下界（Apple HIG 与 WCAG 2.5.5 都取这个数）；min-height 只管一个轴不够，
+     方形的 "?" / ♪ 图标按钮两个轴都要顶起来。padding 留着是给有文字的那批撑内容。 */
+  min-height: 44px; min-width: 44px;
+  touch-action: manipulation;
 }
 button:hover { border-color: var(--c-gold); }
 button:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
@@ -161,3 +165,67 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
   * { animation: none !important; transition: none !important; }
   .toast { transition: none; }
 }
+
+/* 刘海、圆角与浏览器手势条：凡是贴着视口边缘的东西都要让出 env(safe-area-inset-*)，
+   index.html 的 viewport 里有 viewport-fit=cover，否则这些像素在真机上是被吃掉的。 */
+.topbar {
+  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-left: calc(20px + env(safe-area-inset-left));
+  padding-right: calc(20px + env(safe-area-inset-right));
+}
+.stage {
+  padding-left: calc(20px + env(safe-area-inset-left));
+  padding-right: calc(20px + env(safe-area-inset-right));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
+}
+.toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
+
+/* k 按钮是这游戏最高频的命中目标，单独顶到 44×44（基线那条 min-width:40px 不够） */
+.ks button { min-width: 44px; min-height: 44px; padding: 8px 12px; }
+.modes button { min-height: 44px; }
+
+.hud { display: flex; gap: 6px; margin-left: auto; }
+.hud button {
+  min-width: 44px; padding: 6px 10px; font-size: 13px; color: var(--ink-dim);
+  background: transparent; border: 1px solid var(--line); border-radius: 8px;
+}
+.hud button:hover { color: var(--c-ink); border-color: var(--c-gold); }
+.hud button[aria-pressed="true"] {
+  color: var(--c-paper); background: var(--c-brass); border-color: var(--c-brass);
+}
+#help { font-weight: 700; }
+@media (max-width: 900px) {
+  .hud { margin-left: 0; order: 3; width: 100%; }
+  .totals { margin-left: 0; }
+}
+
+/* 暂停盖在金条上：只在 paused 期间存在，pointer-events 由 hidden 控制，不常驻 */
+.paused {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 4px;
+  background: rgba(10, 8, 6, 0.86); border-radius: 14px; text-align: center;
+}
+.paused[hidden] { display: none; }
+.paused-mark { margin: 0; color: var(--c-brass); font-size: 22px; letter-spacing: 4px; }
+.paused h2 { margin: 0 0 4px; font-size: 19px; }
+.paused-note { margin: 0 0 12px; color: var(--ink-dim); font-size: 13px; }
+
+/* 玩法说明：非模态，待在右侧栏里，永远不覆盖画布 —— @pointer 派的是真实鼠标事件，
+   任何盖住金条的浮层都会把那一刀吃到空处。 */
+.tutorial {
+  margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;
+  font-size: 13px; color: var(--ink-dim);
+}
+.tutorial[hidden] { display: none; }
+.tutorial h2 { margin: 0 0 6px; font-size: 15px; color: var(--c-gold); letter-spacing: 1px; }
+.tutorial h3 { margin: 10px 0 4px; font-size: 13px; color: var(--c-ink); }
+.tutorial ol { margin: 0; padding-left: 20px; }
+.tutorial ol li { margin: 0 0 6px; }
+.tutorial b { color: var(--c-ink); }
+.keys { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+kbd {
+  display: inline-block; min-width: 18px; padding: 1px 5px; font: 12px ui-monospace, Menlo, monospace;
+  color: var(--c-ink); background: var(--c-tray); border: 1px solid var(--line); border-radius: 4px;
+}
+.tutorial-actions { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; }
+.tutorial-never { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
+.tutorial-never input { width: 20px; height: 20px; accent-color: var(--c-gold); }

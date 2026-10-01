@@ -106,7 +106,7 @@ function decodeDaily(raw) {
 }
 
 // 设置只有这几个键会被读回来，且各自按类型解码：一个脏的 muted 不该让整个存档变成脏的。
-export const SETTINGS = { muted: Boolean };
+export const SETTINGS = { muted: Boolean, showTutorial: Boolean };
 
 function decodeSettings(raw) {
   const out = {};

@@ -27,6 +27,12 @@
     <button type="button" data-mode="daily">每日</button>
     <button type="button" data-mode="random">随机</button>
   </nav>
+  <div class="hud" role="toolbar" aria-label="系统">
+    <button type="button" id="help" aria-label="玩法说明" title="玩法说明（H）">?</button>
+    <button type="button" id="pause" aria-pressed="false" aria-label="暂停" title="暂停/继续（P）">暂停</button>
+    <button type="button" id="mute" aria-pressed="false" aria-label="静音" title="静音/取消静音（M）">静音</button>
+    <button type="button" id="fullscreen" aria-label="全屏" title="全屏（F）">全屏</button>
+  </div>
   <p class="totals" id="totals"></p>
 </header>
 
@@ -35,6 +41,13 @@
     <canvas id="board" aria-label="金条：a×b 的单位方格，虚线是 φ·b 的黄金参考线"></canvas>
     <div class="ks" id="ks" role="group" aria-label="切几块"></div>
     <p class="hint-line" id="hintline"></p>
+    <div class="paused" id="paused" hidden>
+      <p class="paused-mark">❚❚</p>
+      <h2>已暂停</h2>
+      <p class="paused-note">金条冻住：切块、拖拽与提示都不生效，提示条与"清空存档"的倒计时也停了。<br>
+        按 <b>P</b> 或点这里继续。</p>
+      <div class="curtain-actions"><button type="button" id="resume" class="primary">继续</button></div>
+    </div>
     <div class="curtain" id="curtain" hidden>
       <div class="curtain-card">
         <p class="stars" id="stars"></p>
@@ -77,6 +90,30 @@
       <code>猜中率 1/q</code> 就是随机乱切赢下来的精确概率。</p>
       <p class="save">成绩只存在这台设备的浏览器里。<button type="button" id="wipe">清空存档</button></p>
     </details>
+    <section class="tutorial" id="tutorial" hidden aria-label="玩法说明">
+      <h2>玩法说明 · 60 秒</h2>
+      <ol>
+        <li>桌上是一根 <b>a×b</b> 的金条。轮到你时，从长边切下 <b>k</b> 块 <b>b×b</b> 的方金，
+          <b>1 ≤ k ≤ ⌊a/b⌋</b>；剩下的那条（连同换边后的短边）交给对手。</li>
+        <li><b>正好铺满的人赢</b>：切完剩 0 长度，这一手就叫铺满。切不完的一手只会把条子改小。</li>
+        <li>竖直虚线在 <b>φ·b</b>。条头越过它 → 你这手有必胜着法；没越过 → 无论怎么切都输。
+          判定用的是纯整数 <code>a²−ab−b²</code>，不是浮点 φ。</li>
+        <li>例：<code>13×8</code> 的 ⌊13/8⌋=1，只有一个口，切 1 块变成 <code>8×5</code>；
+          <code>8×5 → 5×3 → 3×2 → 2×1</code> 最后一手 k=2 铺满。这条线是<b>强制</b>的，
+          所以「帕数」等于这局一定会走的手数，不是最佳手数。</li>
+      </ol>
+      <h3>键盘</h3>
+      <ul class="keys">
+        <li><kbd>1</kbd>…<kbd>9</kbd> 直接切 k 块</li>
+        <li><kbd>←</kbd><kbd>→</kbd> 移动预览 <kbd>Enter</kbd> 落下这一刀</li>
+        <li><kbd>H</kbd> 或 <kbd>?</kbd> 开关本页 <kbd>Esc</kbd> 关闭</li>
+        <li><kbd>P</kbd> 暂停 <kbd>M</kbd> 静音 <kbd>F</kbd> 全屏</li>
+      </ul>
+      <p class="tutorial-actions">
+        <button type="button" id="tutclose" class="primary">知道了</button>
+        <label class="tutorial-never"><input type="checkbox" id="tutnever"> 不再自动显示</label>
+      </p>
+    </section>
   </aside>
 </main>
 
