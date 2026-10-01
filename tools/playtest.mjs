@@ -539,8 +539,35 @@ const SCENARIOS = {
     rec('浏览器里重算整本书 == 发货那一份（recomputeBook 0 处不符）', (() => { const rc = c.recomputeBook(); return rc.same === true && rc.mismatchCount === 0 && rc.bound === 60 && rc.rows === 1830; })(), c.recomputeBook());
     rec('verifyShipped() 空 = 题卡上没有一个数是编的', c.verifyShipped().length === 0, c.verifyShipped());
     rec('这一台设备能真的落盘', s.persist === true, { persist: s.persist });
-    rec('没有请求任何图片/字体/音频资源（全是程序画的）', performance.getEntriesByType('resource').every((e) => !/\\.(png|jpe?g|gif|webp|woff2?|mp3|ogg)$/.test(e.name)), performance.getEntriesByType('resource').map((e) => e.name.split('/').pop()).slice(0, 10));
-    rec('favicon 是内联 data URI（不会打 /favicon.ico）', document.querySelector('link[rel=icon]').href.startsWith('data:image/svg+xml'), document.querySelector('link[rel=icon]').href.slice(0, 40));
+    // 2026-10-01 起本仓**发货位图**（icons/ 与 textures/，由 assets/gen/make_art.py 生成并一起提交），
+    // 所以旧的那条"一个图片请求都不许有"作废。判据换成同一条边界的正面版：资产必须**真的解得开**，
+    // 而且不许有 404 —— 一张 404 的 PNG 在页面上是静默的破图，只有请求状态与 naturalWidth 抓得到。
+    const IMG = ['icons/favicon-32.png', 'icons/apple-touch-icon.png', 'icons/icon-192.png',
+      'icons/icon-512.png', 'icons/icon-maskable-512.png', 'textures/paper-grain.png',
+      'textures/metal-grain.png', 'textures/spark.png', 'social/og-card.png'];
+    const want = { 'icons/favicon-32.png': 32, 'icons/apple-touch-icon.png': 180, 'icons/icon-192.png': 192,
+      'icons/icon-512.png': 512, 'icons/icon-maskable-512.png': 512, 'textures/paper-grain.png': 192,
+      'textures/metal-grain.png': 192, 'textures/spark.png': 48, 'social/og-card.png': 1200 };
+    const imgs = await Promise.all(IMG.map((src) => new Promise((resolve) => {
+      const im = new Image();
+      im.onload = () => resolve({ src, w: im.naturalWidth, h: im.naturalHeight });
+      im.onerror = () => resolve({ src, w: 0, h: 0 });
+      im.src = new URL(src, document.baseURI).href;
+    })));
+    rec('发货的位图全部解得开且尺寸如名（PNG 不是空壳）', imgs.every((i) => i.w > 0 && i.h > 0)
+      && imgs.every((i) => Math.max(i.w, i.h) === want[i.src]), imgs);
+    const assetMiss = performance.getEntriesByType('resource')
+      .filter((e) => /\\.(png|webmanifest)$/.test(e.name) && e.responseStatus >= 400)
+      .map((e) => e.name.split('/').pop() + ':' + e.responseStatus);
+    rec('资产与 manifest 没有 404（破图与装不上都是静默失败）', assetMiss.length === 0, assetMiss);
+    const iconLink = document.querySelector('link[rel~="icon"][sizes="32x32"]');
+    rec('favicon 指向盘上的真 PNG（不再是内联 SVG，能装进桌面）',
+      !!iconLink && /icons\\/favicon-32\\.png$/.test(iconLink.href), iconLink && iconLink.href.slice(-40));
+    rec('apple-touch-icon 与 manifest 各只有一根线且路径真实',
+      document.querySelectorAll('link[rel="apple-touch-icon"]').length === 1
+        && document.querySelectorAll('link[rel="manifest"]').length === 1
+        && /manifest\\.webmanifest$/.test(document.querySelector('link[rel="manifest"]').href),
+      { manifest: document.querySelector('link[rel="manifest"]').href.split('/').pop() });
     rec('提示语说一句、且只说一句', TXT('hintline').length > 0 && !/\\n/.test(TXT('hintline')), TXT('hintline').slice(0, 60));
     return { rows };
   })()`,

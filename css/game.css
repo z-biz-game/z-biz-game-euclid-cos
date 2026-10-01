@@ -19,6 +19,12 @@
   --ink-dim: #ab9a80;
   --line: rgba(184, 134, 59, 0.26);
   --rule: repeating-linear-gradient(180deg, transparent 0 27px, rgba(184, 134, 59, 0.05) 27px 28px);
+  /* 三张纹理由 assets/gen/make_art.py 生成并随仓发货（重跑 `npm run art`）。它们只上到 DOM
+     外壳上，一张都不往 canvas 上叠：js/view.js 画出的金格数量是 verify.sh 的像素判据，
+     半透明纹理一旦参与合成，那个计数就不再等于 a*b —— 断的是产品正确性，不是好不好看。 */
+  --tx-paper: url("../textures/paper-grain.png");
+  --tx-metal: url("../textures/metal-grain.png");
+  --tx-spark: url("../textures/spark.png");
 }
 
 * { box-sizing: border-box; }
@@ -32,6 +38,16 @@ body {
     var(--c-paper);
   color: var(--c-ink);
   font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 纸纹：铺在最底下一层（z-index:-1 落在根背景之上、所有内容之下），不接事件，所以
+   既不会挡住 #board 的指针命中，也不会参与 canvas 的合成。 */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--tx-paper) 0 0 / 192px 192px repeat;
+  mix-blend-mode: overlay;
+  opacity: .55;
 }
 
 .topbar {
@@ -85,10 +101,15 @@ body {
 }
 .curtain[hidden] { display: none; }
 .curtain-card {
-  width: min(88%, 356px); background: var(--c-paper2); border: 1px solid var(--c-brass);
+  width: min(88%, 356px); background: var(--tx-metal) 0 0 / 192px 192px, var(--c-paper2);
+  background-blend-mode: overlay;
+  border: 1px solid var(--c-brass);
   border-radius: 12px; padding: 16px 18px; text-align: center;
 }
-.stars { margin: 0; font-size: 24px; color: var(--c-gold); letter-spacing: 5px; }
+.stars {
+  margin: 0; font-size: 24px; color: var(--c-gold); letter-spacing: 5px;
+  background: var(--tx-spark) center / 48px 48px no-repeat;
+}
 .curtain-card h2 { margin: 6px 0 4px; font-size: 19px; }
 .tally { margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; font-variant-numeric: tabular-nums; }
 .curtain-actions { display: flex; gap: 8px; justify-content: center; }
