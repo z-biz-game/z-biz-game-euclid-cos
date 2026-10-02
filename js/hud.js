@@ -19,10 +19,11 @@ const SWALLOW = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel',
   'mousedown', 'mousemove', 'mouseup'];
 // 暂停时仍然可以点的东西：解除面板本身 + 右上角系统条（玩法/暂停/静音/全屏）。
 const ALWAYS_ON = '.paused, .hud';
-// 这些键在暂停中必须照常工作 —— 特别是 P，不然暂停就成了只能靠鼠标出去的坑。
-const KEEP_THROUGH = ['p', 'P', 'm', 'M', 'f', 'F', 'h', 'H', '?', 'Escape'];
+// 这些键在暂停中必须照常工作 —— 特别是 P 与 Space（同一个动作的两个键名），不然"暂停"就成了
+// 只能靠鼠标出去的坑；R 也在内：暂停中看到不对劲要能直接重开，而不是先解除再重开两步。
+const KEEP_THROUGH = ['p', 'P', ' ', 'r', 'R', 'm', 'M', 'f', 'F', 'h', 'H', '?', 'Escape'];
 
-export function mountHud({ el, game, clock, audio, store, toast }) {
+export function mountHud({ el, game, clock, audio, store, toast, onRestart = () => {} }) {
   let rafId = null;
 
   function requestFrame() {
@@ -134,10 +135,14 @@ export function mountHud({ el, game, clock, audio, store, toast }) {
     const t = ev.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;   // 不打断正在输入的东西
     const k = ev.key;
+    // 焦点在按钮上时，空格是浏览器的原生"激活"键：让给它，全局这支不再动 —— 否则一次按下
+    // 先点中那个按钮、再翻一次暂停，看起来就像按了没反应。字母键不受这条影响。
+    if (k === ' ' && t && t.tagName === 'BUTTON') return;
     if (k === 'h' || k === 'H' || k === '?') { toggleTutorial(); ev.preventDefault(); }
     else if (k === 'm' || k === 'M') { toggleMute(); ev.preventDefault(); }
     else if (k === 'f' || k === 'F') { toggleFullscreen(); ev.preventDefault(); }
-    else if (k === 'p' || k === 'P') { setPaused(!game.paused); ev.preventDefault(); }
+    else if (k === 'p' || k === 'P' || k === ' ') { setPaused(!game.paused); ev.preventDefault(); }
+    else if (k === 'r' || k === 'R') { onRestart(); ev.preventDefault(); }
     else if (k === 'Escape' && !el.tutorial.hidden) { closeTutorial(); ev.preventDefault(); }
   });
 

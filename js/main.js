@@ -51,7 +51,7 @@ const game = {
 // 于是暂停能真的冻结它们、切后台不会被一次 5 秒的空档直接把计时器烧完（js/core/clock.js）。
 const clock = createClock();
 const audio = createAudio({ muted: store.settings.muted === true });
-const hud = mountHud({ el, game, clock, audio, store, toast });
+const hud = mountHud({ el, game, clock, audio, store, toast, onRestart: () => restart() });
 
 // ------------------------------------------------------------------ routing
 function routeTo(hash) {
