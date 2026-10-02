@@ -612,6 +612,10 @@ const api = {
   verifyShipped: () => verifyPool(),
   pwa: pwaStatus,
   hud: () => hud.status(),
+  // 原始读数（不取整）：帧率对拍要比 `simMs` 的小数部分，取整之后 30Hz 与 120Hz 的
+  // 一帧之差（33.3ms vs 8.3ms）会被抹成同一个数，判尺就空跑了。
+  simMs: () => clock.simMs,
+  pending: () => clock.pending,
 };
 window.euclid = api;
 console.log(`[log] euclid v${VERSION} ready · book ${BOOK.states} 局面 · lots ${lots.length} · 分歧 ${game.reconcileBad}`);
