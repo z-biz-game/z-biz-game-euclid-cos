@@ -185,7 +185,43 @@ test('clock: 全仓只有会话时钟在推进时间 —— main/hud 里不许�
   const hud = fs.readFileSync(new URL('../js/hud.js', import.meta.url), 'utf8');
   eq((main.match(/clock\.after\(/g) || []).length, 2, '两个倒计时（提示条 + 清空确认）都该走会话时钟');
   ok(hud.includes('clock.tick(ts)'), 'hud 是唯一的逐帧驱动者');
-  eq((hud.match(/requestAnimationFrame/g) || []).length, 1, '只许一处 rAF，帧循环不能到处都是');
+  // 帧循环只许有一条：回调名必须是 frame，且挂帧点只有 requestFrame()（从空闲里醒来，先 reanchor）
+  // 与 frame()（连着走，直接续挂）两处。写成两处是有原因的 —— 把连续帧也走 reanchor 的话，
+  // 每一帧都变成哨兵帧，simMs 永远不推进；这条断言用"只有一个回调 + 两个挂点"卡住结构，
+  // 而不是数字符（第三处 rAF、或者换了回调名的野循环，照样红）。
+  const sites = hud.match(/rafId\s*=\s*requestAnimationFrame\((\w+)\)/g) || [];
+  eq(sites.length, 2, `挂帧点该正好两处（唤醒 + 续挂），实测 ${sites.length}`);
+  eq(new Set(sites.map((s) => /\((\w+)\)/.exec(s)[1])).size, 1, '两处挂帧点必须挂同一个回调：第二条循环就是第二个时钟');
+  eq((hud.match(/requestAnimationFrame/g) || []).length, sites.length, '不许有第三种形态的 rAF 调用');
+});
+
+test('clock: 空闲重挂不白送时间 —— reanchor 之后第一帧只记时，钳位只挡真节流', async () => {
+  const mod = await loadClock();
+  const clock = mod.createClock();
+  clock.tick(1000);
+  clock.tick(1100);
+  eq(clock.simMs, 100, '哨兵帧之后走了 100ms');
+  // 驱动停了 5 秒（用户在想棋）→ 醒来重新挂帧。这 5000ms 是空闲，不是模拟时间。
+  clock.reanchor();
+  eq(clock.tick(6100), 0, 'reanchor 之后第一帧必须只记时标，一毫秒都不补');
+  clock.tick(6200);
+  eq(clock.simMs, 200, '只补这一帧自己的 100ms：既不补空闲那 5 秒，也不白送 MAX_STEP_MS 那 250ms');
+  // 对照：驱动一直在跑、只是这一帧被后台拖长了 —— 那才归 MAX_STEP_MS 管。
+  const throttled = mod.createClock();
+  throttled.tick(1000);
+  throttled.tick(1100);
+  eq(throttled.tick(6100), 250, '连续帧里的 5s 空档折算成 MAX_STEP_MS，不追帧');
+  // 端到端：刚醒来的那一刻排一个 2600ms 的提示条，它该活满 2600ms 前台时间，而不是 2350ms。
+  const armed = mod.createClock();
+  armed.tick(1000);
+  armed.tick(1100);
+  armed.reanchor();
+  let firedWall = null;
+  armed.after(2600, () => { firedWall = armed.__wall; });
+  for (let ts = 6100; ts <= 12000; ts += 16.7) { armed.__wall = ts; armed.tick(ts); }
+  ok(firedWall !== null, '倒计时得真的开火');
+  ok(Math.abs(firedWall - (6100 + 2600)) <= 17,
+     `开火时刻 ${firedWall} 应当是排下它之后 2600ms 前台（一帧以内）`);
 });
 
 run();

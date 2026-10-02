@@ -12,7 +12,11 @@
 //   3. 把 AudioContext 关掉的活儿交给 audio.js：暂停期间不再排任何音。
 // 恢复不补欠账：暂停多久，模拟时间就只停多久（js/core/clock.js 的 paused 分支）。
 
-const SWALLOW = ['pointerdown', 'pointermove', 'pointerup'];
+// 暂停时要吃掉的输入事件。除了 pointer 主干，还得包括 main.js 里没有 PointerEvent 时的
+// touch/mouse 回落 —— 否则在老 Safari 上"暂停"就只是盖了一层看不见的布。
+const SWALLOW = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel',
+  'touchstart', 'touchmove', 'touchend', 'touchcancel',
+  'mousedown', 'mousemove', 'mouseup'];
 // 暂停时仍然可以点的东西：解除面板本身 + 右上角系统条（玩法/暂停/静音/全屏）。
 const ALWAYS_ON = '.paused, .hud';
 // 这些键在暂停中必须照常工作 —— 特别是 P，不然暂停就成了只能靠鼠标出去的坑。
@@ -22,12 +26,14 @@ export function mountHud({ el, game, clock, audio, store, toast }) {
   let rafId = null;
 
   function requestFrame() {
-    if (rafId === null) rafId = requestAnimationFrame(frame);
+    // rafId === null 意味着驱动是停着的：到下一帧之间那段空闲不是模拟时间，先立哨兵再挂帧。
+    if (rafId === null) { clock.reanchor(); rafId = requestAnimationFrame(frame); }
   }
   function frame(ts) {
     rafId = null;
     clock.tick(ts);
-    if (clock.pending > 0) requestFrame();       // 没有待办就自己停：不空转烧电
+    // 连着走的时候直接续挂，不走 requestFrame()：那是"从空闲里醒来"的入口，会把每一帧都变成哨兵帧。
+    if (clock.pending > 0) rafId = requestAnimationFrame(frame);
   }
 
   // 1 ------------------------------------------------------------- 输入闸门

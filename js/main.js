@@ -92,6 +92,7 @@ function load(hash, { push = true } = {}) {
   game.match = startMatch(lot);
   game.hints = 0;
   game.settled = false;
+  game.dragging = false;
   game.record = store.record(lot.id);
   view.layout();
   render();
@@ -327,6 +328,7 @@ function restart() {
   game.match = startMatch(game.lot);
   game.hints = 0;
   game.settled = false;
+  game.dragging = false;               // 手上的那一刀不许跨过重开：否则重开后松手会切出新的一手
   clearKPreview();
   render();
   return game.match;
@@ -384,6 +386,25 @@ el.board.addEventListener('pointerleave', () => {
   clearKPreview();
   render();
 });
+// 回落：没有 PointerEvent 的引擎（老 Safari、部分 WebView）一支 pointer 都收不到，那不是"没手势"
+// 而是整块金条点不动。坐标仍然走 clientX/clientY，view.js 的 rect 换算不必分叉。
+if (!window.PointerEvent) {
+  const fromTouch = (ev) => {
+    const t = ev.changedTouches && ev.changedTouches[0];
+    return t ? { clientX: t.clientX, clientY: t.clientY, pointerId: 1, target: ev.target } : null;
+  };
+  const bind = (type, fn) => el.board.addEventListener(type, (ev) => {
+    const p = fromTouch(ev);
+    if (p) fn(p); else if (ev.clientX !== undefined) fn(ev);
+  });
+  bind('touchstart', onDown);
+  bind('touchmove', onMove);
+  bind('touchend', onUp);
+  el.board.addEventListener('touchcancel', onCancel);
+  bind('mousedown', onDown);
+  bind('mousemove', onMove);
+  bind('mouseup', onUp);
+}
 el.ks.addEventListener('click', (ev) => {
   const k = ev.target && ev.target.dataset ? Number(ev.target.dataset.k) : NaN;
   if (Number.isInteger(k)) tapK(k);

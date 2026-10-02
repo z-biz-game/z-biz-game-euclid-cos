@@ -71,6 +71,15 @@ export function createClock() {
 
     has(timer) { return timers.includes(timer); },
 
+    // 重新挂上驱动（rAF 循环从"没有待办"里醒过来）时调用：把时标哨兵立回去，第一帧只记时、不推进。
+    // 为什么必须有它：没有待办时驱动循环是停的，下一次 tick 看到的 elapsed 是**整段空闲**（用户
+    // 想棋的那 40 秒），MAX_STEP_MS 会把它折算成 250ms 白送的时间 —— 2600ms 的提示条实际只活
+    // 2350ms，而且"送多少"取决于空闲多久。空闲不是模拟时间，一个毫秒都不该记。
+    reanchor() {
+      lastTs = null;
+      return paused;
+    },
+
     setPaused(v) {
       paused = !!v;
       return paused;
