@@ -249,8 +249,9 @@ test('storage: 写进去的 JSON 不带函数、不带 undefined，重新解析�
   const raw = ls.getItem(KEY);
   ok(raw.length < 4000, `存档不该膨胀：${raw.length} 字节`);
   const again = JSON.parse(raw);
-  eq(Object.keys(again).sort(), ['daily', 'records', 'stats', 'unlocked'], '顶层形状就是这四样');
-  eq(again.records.r.best, undefined, '输了的记录没有 best 字段');
+  eq(Object.keys(again).sort(), ['daily', 'records', 'stats', 'unlocked', 'v'], '顶层多一个 v：存档格式带版本号');
+  eq(again.v, 1, 'v 就是本仓的 SAVE_VERSION');
+  eq(again.records.r.best, undefined, '输了的记录落盘时没有 best 字段（读档时才归一成 null）');
   eq(again.records.r.lastPlies, 7);
   eq(again.unlocked, 3);
 });
