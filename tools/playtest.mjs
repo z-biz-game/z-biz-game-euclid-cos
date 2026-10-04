@@ -539,7 +539,7 @@ const SCENARIOS = {
     rec('浏览器里重算整本书 == 发货那一份（recomputeBook 0 处不符）', (() => { const rc = c.recomputeBook(); return rc.same === true && rc.mismatchCount === 0 && rc.bound === 60 && rc.rows === 1830; })(), c.recomputeBook());
     rec('verifyShipped() 空 = 题卡上没有一个数是编的', c.verifyShipped().length === 0, c.verifyShipped());
     rec('这一台设备能真的落盘', s.persist === true, { persist: s.persist });
-    rec('没有请求任何图片/字体/音频资源（全是程序画的）', performance.getEntriesByType('resource').every((e) => !/\\.(png|jpe?g|gif|webp|woff2?|mp3|ogg)$/.test(e.name)), performance.getEntriesByType('resource').map((e) => e.name.split('/').pop()).slice(0, 10));
+    rec('请求的资源全同源：位图只准来自本站自己的 icons/，字体与音频为零', (() => { const rs = performance.getEntriesByType('resource'); const key = (n) => n.split('?')[0]; const path = (n) => { try { return new URL(n).pathname; } catch { return n; } }; const isBmp = (n) => /\\.(png|jpe?g|gif|webp|ico)$/i.test(key(n)); const ext = rs.filter((e) => !e.name.startsWith(location.origin)).map((e) => e.name); const fonts = rs.filter((e) => /\\.(woff2?|ttf|otf|eot|mp3|ogg|wav|m4a)$/i.test(key(e.name))).map((e) => path(e.name)); const offRoster = rs.filter((e) => isBmp(e.name) && !/\\/icons\\/[\\w.-]+$/i.test(path(e.name))).map((e) => path(e.name)); return rs.length > 0 && ext.length === 0 && fonts.length === 0 && offRoster.length === 0; })(), { n: performance.getEntriesByType('resource').length, bmp: performance.getEntriesByType('resource').filter((e) => /\\.(png|jpe?g|gif|webp|ico)$/i.test(e.name.split('?')[0])).map((e) => e.name.split('/').pop()) });
     rec('favicon 是内联 data URI（不会打 /favicon.ico）', document.querySelector('link[rel=icon]').href.startsWith('data:image/svg+xml'), document.querySelector('link[rel=icon]').href.slice(0, 40));
     rec('提示语说一句、且只说一句', TXT('hintline').length > 0 && !/\\n/.test(TXT('hintline')), TXT('hintline').slice(0, 60));
     return { rows };
@@ -701,7 +701,7 @@ const SCENARIOS = {
     c.autoWin(); await sleep(120);
     const id = c.state.sourceId;
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
-    rec('这一胜落到 localStorage（只有一个键）', !!(raw && raw.records[id] && raw.records[id].won) && Object.keys(raw).sort().join(',') === 'daily,records,stats,unlocked', raw && Object.keys(raw));
+    rec('这一胜落到 localStorage，顶层就是存档那五个键（带版本号，与 test/storage.test.mjs 钉的同一组）', !!(raw && raw.records[id] && raw.records[id].won) && Object.keys(raw).sort().join(',') === 'daily,records,stats,unlocked,v', raw && Object.keys(raw));
     rec('只有一个存档键被写', Object.keys(localStorage).filter((k) => /euclid\\./.test(k)).length === 1, Object.keys(localStorage));
     // The demo button is NOT a win: 照表收局 writes a cleared record but leaves the campaign
     // frontier alone, because only the click path runs settle(), which is where unlock() lives.

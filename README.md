@@ -89,7 +89,7 @@ npm run electron   # 桌面壳
 * 8 个 node 套件、**172 行断言、0 失败**：`euclid 25 · golden 13 · retro 16 · book 34 · game 29 · library 25 · storage 17 · bake 13`。期望值来自 `test/fixture.mjs`（先手算在纸上，再写进代码）与 `tools/bake.mjs` 的真实输出。
 * `bash tools/verify.sh` 在真实 headless Chrome 里跑 5 个场景、**131 行断言、0 失败**：`@boot 20 · @play 29 · @routes 21 · @save 16 · @pointer 45`。`@pointer` 用 CDP 派发真的鼠标事件、`Emulation.setDeviceMetricsOverride` 装窄屏、`Page.navigate` 真重载，并且直接读 canvas 像素（"金色方格数 == a×b"、`a·cell+(a−1)·gap` 的像素跨度、φ·b 虚线上的墨色计数）。
 * 空套件算失败：一个场景报告 0 行断言时 `verify.sh` 直接判负——静默死掉的 harness 看起来最像绿。
-* CI：`.github/workflows/ci.yml` 三个 job（node 套件 / 重烘焙确定性 `cmp` + 页面骨架 / headless 浏览器），Pages：`.github/workflows/pages.yml` 只把 `index.html`、`css/`、`js/` 拷进 `_site`。**全仓零依赖，任何地方都不需要 `npm install`。**
+* CI：`.github/workflows/ci.yml` 三个 job（node 套件 / 重烘焙确定性 `cmp` + 页面骨架 / headless 浏览器），Pages：`.github/workflows/pages.yml` 调 `bash tools/assemble-site.sh` 拷出 `_site`——「拷哪些」只住在那份清单里，文档不再手抄一遍。**全仓零依赖，任何地方都不需要 `npm install`。**
 
 ## 8. 目录
 
@@ -120,17 +120,29 @@ MIT。
   基、`navigator.serviceWorker.register`、`scope`），`manifest` 的 icons/screenshots/shortcuts 各自
   的 `src` 也算引用。取径上读不到的那一站本身就是红（读不到＝这一站根本没扫）。每条引用都必须在
   产物里且非 0 字节；绝对路径单列一条红，因为 Pages 挂在 `/<repo>/` 前缀下会跳出去。
-- **P 位图不许说谎**：`manifest` 声明的 `sizes` 必须等于 PNG IHDR 的真实宽高。
-- **钉住两个数**：`EXPECT_CHECKS=36`（R 段实际检查的路径条数）与 `EXPECT_ROWS=54`
-  （这一次跑的断言条数）。没改页面却掉了，说明解析断了；删掉一张图标会同时少一条 R10 与那张的
-  P1/P2，所以两个数一起钉，rows 能漂就是闸在缩水的信号。
+- **P 位图不许说谎**：`manifest` 声明的 `sizes` 必须等于 PNG IHDR 的真实宽高——文件图标读文件头，
+  内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
+  （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
+  声明写 512 而真图 192 就一路放行。
+- **钉住两个数**：R 段实际检查的路径条数（`36`）与这一次跑的断言条数（`54`），两个数
+  都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
+  少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
+  不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
+  自己的条数，还有的会把文档里点到的每个组编号逐个核对"这一轮真的发过"——两道闸共用一个名字，
+  或者在本仓的文档里出现一个本仓没有的组编号，打红的都是不相干的那一边。
 
 `tools/deploy-set-selftest.mjs` 是这两颗钉的阳性证明：它把仓库复制到临时目录，照着每一类断言
 各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
 X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
-X9 CI 不跑闸），要求每一刀都让闸**点名**变红；X10 是阴性对照——往入口 JS 追加一行只写在注释里
-的假路径，闸必须仍然绿、条数仍然 `36`、rows 仍然 `54`。靶子从 `DEPLOY_SET_DUMP=1`
-的出处表现挑，所以页面改了、仓与仓不同，台架跟着走。
+X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
+`36`、断言仍然 `54`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
+图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
+要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`
+的出处表现挑（取径真的会读的那支 JS / 那一张 CSS，不写死某一个仓的入口名），所以页面改了、仓与仓
+不同，台架跟着走。
 
-`npm run deploy-set` 与 `npm run deploy-set:selftest` 是同两条命令的本地入口；把它们接进本仓
+`node tools/deploy-set.mjs` 与 `node tools/deploy-set-selftest.mjs` 就是 CI 跑的那两条命令本身
+（package.json 里的 `deploy-set` / `deploy-set:selftest` 只是同一支脚本的 npm 入口）；把它们接进本仓
 那条浏览器 one-shot（`tools/verify.sh`）还欠着——那道脚本的腿名单与条数钉是每个仓自己的形状。
+
