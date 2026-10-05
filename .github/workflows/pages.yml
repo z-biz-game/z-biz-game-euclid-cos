@@ -20,16 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # No bundler, no install, no build step: the game ships plain ES modules, so the site is a
-      # file copy. Only index.html + css/ + js/ are reachable from the page — keep the static
-      # server, the electron shell, the bake tool, the tests and the CI config out of the
+      # file copy. What the page actually reaches for is index.html + css/ + js/ PLUS the art
+      # wave's bitmaps, the manifest and sw.js — the first two of those three used to be left out,
+      # which shipped a PWA nobody could install and a page whose every texture 404'd. Keep the
+      # static server, the electron shell, the bake tool, the tests and the CI config out of the
       # artifact. The whole 1830-position book, the 32-lot campaign and the daily seeds are baked
       # into js/data/lots.js by tools/bake.mjs and shipped as a source file like any other, so the
       # browser never solves anything to print a verdict: it reads a table.
       - name: Assemble static site
-        run: |
-          mkdir _site
-          cp index.html _site/
-          cp -r css js _site/
+        run: node tools/check_site.mjs --assemble _site
       - name: The artifact is self-contained
         run: |
           test -f _site/index.html
@@ -39,6 +38,7 @@ jobs:
           test ! -e _site/server.cjs
           test ! -e _site/tools
           grep -q '<canvas' _site/index.html
+          node tools/check_site.mjs _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
