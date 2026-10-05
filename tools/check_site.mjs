@@ -60,6 +60,21 @@ for (const m of html.matchAll(/(?:href|src|content)="([^"]+)"/g)) {
 }
 for (const m of html.matchAll(/<link[^>]+rel="manifest"[^>]+href="([^"]+)"/g)) add(m[1], 'index.html:manifest');
 
+// 社交标签必须是绝对 URL（爬虫不接受相对路径），而 add() 见 `https?:` 就跳过 —— 于是 og-card
+// 那 388KB 会从自检的账上消失，产物里少一张卡也没人报。这里把本站部署域认下来：
+//   1. og:url 必须逐字等于它 —— 从兄弟仓拷来的绝对域会在这一条上露头；
+//   2. 以它开头的 og:image / twitter:image 折回相对路径，重新受"盘上必须有真的字节"约束。
+// 部署域改名时这一行与 index.html 的标签要一起改，改漏一边就是 exit 1。
+const SITE = 'https://z-biz-game.github.io/z-biz-game-euclid-cos/';
+const ogIssues = [];
+const pageUrl = (html.match(/property="og:url"\s+content="([^"]+)"/) || [])[1];
+if (pageUrl !== SITE) {
+  ogIssues.push(`og:url=${JSON.stringify(pageUrl)} 与部署域 ${SITE} 不一致（缺标签也算）`);
+}
+for (const m of html.matchAll(/content="(https?:\/\/[^"]+)"/g)) {
+  if (m[1].startsWith(SITE) && m[1].length > SITE.length) add(m[1].slice(SITE.length), 'index.html:social');
+}
+
 const cssSrc = readOpt(path.join(site, 'css/game.css')) || '';
 for (const m of String(cssSrc).matchAll(/url\(["']?([^"')]+)["']?\)/g)) add(path.normalize(path.join('css', m[1])), 'game.css');
 
@@ -87,6 +102,24 @@ function pngSize(file) {
   if (!head.slice(0, 8).equals(PNG)) return null;
   if (head.slice(12, 16).toString('ascii') !== 'IHDR') return null;
   return { w: head.readUInt32BE(16), h: head.readUInt32BE(20) };
+}
+
+// og:image:width/height 是宣称值：拿部署产物里那张 PNG 的 IHDR 实测对一遍，小图冒充 1200×630
+// 要在这一条上露头。（放在 pngSize 之后：PNG 是 const，早一步取用会撞 TDZ。）
+{
+  const img = (html.match(/property="og:image"\s+content="([^"]+)"/) || [])[1];
+  const w = Number((html.match(/property="og:image:width"\s+content="(\d+)"/) || [])[1]);
+  const h = Number((html.match(/property="og:image:height"\s+content="(\d+)"/) || [])[1]);
+  if (img && img.startsWith(SITE)) {
+    const rel = img.slice(SITE.length);
+    const dims = fs.existsSync(path.join(site, rel)) ? pngSize(path.join(site, rel)) : null;
+    if (!dims) ogIssues.push(`og:image 指向的 ${rel} 不是一张能读 IHDR 的 PNG`);
+    else if (dims.w !== w || dims.h !== h) ogIssues.push(`og:image 宣称 ${w}×${h}，IHDR 实测 ${dims.w}×${dims.h}`);
+  } else if (img) {
+    ogIssues.push(`og:image 不是部署域下的绝对 URL：${JSON.stringify(img)}`);
+  } else {
+    ogIssues.push('页面没有 og:image 标签');
+  }
 }
 
 const missing = [];
@@ -117,14 +150,15 @@ const forbidden = ['server.cjs', 'tools', 'test', 'electron', 'package.json', 'D
   .filter((p) => fs.existsSync(path.join(site, p)));
 
 console.log(`产物 ${site}`);
-console.log(`  引用 ${checked} 条：缺 ${missing.length}、空 ${empty.length}、非位图 ${notBitmap.length}、尺寸不符 ${wrongSize.length}`);
+console.log(`  引用 ${checked} 条：缺 ${missing.length}、空 ${empty.length}、非位图 ${notBitmap.length}、尺寸不符 ${wrongSize.length}、og 不合格 ${ogIssues.length}`);
 console.log(`  manifest：name=${manifest.short_name || manifest.name} icons=${(manifest.icons || []).length} display=${manifest.display} theme_color=${manifest.theme_color}`);
 for (const r of missing) console.error('  MISS ' + r + '  ← ' + (meta.get(r) || []).join(','));
 for (const r of empty) console.error('  EMPTY ' + r);
 for (const r of notBitmap) console.error('  NOT-BITMAP ' + r);
 for (const r of wrongSize) console.error('  WRONG-SIZE ' + r);
+for (const r of ogIssues) console.error('  OG-FAIL ' + r);
 if (forbidden.length) console.error('  LEAK ' + forbidden.join(', ') + '（这些只该留在仓里）');
 
-const bad = missing.length + empty.length + notBitmap.length + wrongSize.length + forbidden.length;
+const bad = missing.length + empty.length + notBitmap.length + wrongSize.length + forbidden.length + ogIssues.length;
 if (bad) { console.error(`产物自检：${bad} 项不合格`); process.exit(1); }
 console.log('产物自检：通过 —— 每一条引用都在盘上有真的字节。');

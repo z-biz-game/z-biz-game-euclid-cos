@@ -21,10 +21,16 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 // ---------------------------------------------------------------- 资产与静态服务
+// 社交标签（og:image / twitter:image）必须是绝对 URL，爬虫才接受；那意味着按相对路径扫描的
+// 这张表会漏掉 og-card —— 所以这里把它折回相对路径，一起受"200、MIME 对、非 0 字节"的约束。
+// 部署域与 tools/check_site.mjs 的 SITE 必须同值，下面的测试专门钉这一对。
+export const SITE_ORIGIN = 'https://z-biz-game.github.io/z-biz-game-euclid-cos/';
+
 function shippedRefs() {
   const refs = new Set();
   const scan = (text, re) => { for (const m of text.matchAll(re)) refs.add(m[1]); };
   scan(read('index.html'), /(?:href|src|content)="((?:icons|textures|social|css|js)\/[^"]+|manifest\.webmanifest)"/g);
+  scan(read('index.html'), new RegExp(`content="${SITE_ORIGIN}((?:icons|textures|social|css|js)/[^"]+)"`, 'g'));
   scan(read('css/game.css'), /url\("((?:\.\.\/)?(?:icons|textures|social)\/[^"]+)"\)/g);
   for (const ic of JSON.parse(read('manifest.webmanifest')).icons) refs.add(ic.src);
   return [...refs].map((r) => r.replace(/^\.\.\//, ''));
@@ -203,6 +209,36 @@ test('manifest 的每条 icons[].src 都是盘上真 PNG，且 IHDR 尺寸与标
     if (w !== dw || h !== dh) wrong.push(`${ic.src}: 盘上 ${w}x${h} 标称 ${dw}x${dh}`);
   }
   assert.deepEqual(wrong, [], wrong.join(' / '));
+});
+
+// ---------------------------------------------------------------- 社交卡
+// 分享出去的那张卡是纯文本还是带图，取决于这几条机器能判的规矩：爬虫只吃绝对 URL（相对路径会被
+// 原样丢给解析器）、og:image:width/height 是宣称值所以必须和 IHDR 实测对得上，以及页面与工具两处
+// 部署域必须是同一个字符串 —— 三样都会在改域名/换图时漂，漂了卡就悄悄没了图。
+test('社交卡：标签齐全、URL 绝对、宣称尺寸对得上 IHDR 实测', () => {
+  const html = read('index.html');
+  const tag = (re) => (html.match(re) || [])[1];
+  ok(tag(/property="og:url"\s+content="([^"]+)"/) === SITE_ORIGIN, `og:url 必须逐字等于部署域 ${SITE_ORIGIN}`);
+  const ogImg = tag(/property="og:image"\s+content="([^"]+)"/);
+  const twImg = tag(/name="twitter:image"\s+content="([^"]+)"/);
+  ok(ogImg && ogImg.startsWith(SITE_ORIGIN), `og:image 必须是部署域下的绝对 URL，实际 ${JSON.stringify(ogImg)}`);
+  ok(twImg && twImg.startsWith(SITE_ORIGIN), `twitter:image 必须是绝对 URL，实际 ${JSON.stringify(twImg)}`);
+  ok(tag(/name="twitter:card"\s+content="([^"]+)"/) === 'summary_large_image', 'twitter:card 不是大图卡，1200×630 会被裁成小方图');
+  for (const re of [/property="og:title"/, /property="og:description"/, /name="twitter:title"/,
+    /name="twitter:description"/, /property="og:image:alt"/, /name="twitter:image:alt"/]) {
+    const m = html.match(new RegExp(re.source + '\\s+content="([^"]+)"'));
+    ok(m && m[1].length > 8, `缺标签或内容为空：${re.source}`);
+  }
+  const w = Number(tag(/property="og:image:width"\s+content="(\d+)"/));
+  const h = Number(tag(/property="og:image:height"\s+content="(\d+)"/));
+  const buf = fs.readFileSync(path.join(ROOT, ogImg.slice(SITE_ORIGIN.length)));
+  assert.equal(buf.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${ogImg} 指向的不是一张 PNG`);
+  const [aw, ah] = [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+  assert.equal(aw, w, `og:image:width 宣称 ${w}，IHDR 实测 ${aw}`);
+  assert.equal(ah, h, `og:image:height 宣称 ${h}，IHDR 实测 ${ah}`);
+  // 页面与产物自检两处部署域必须同值，否则"折回相对路径"这一步在其中一个里悄悄失效。
+  ok(read('tools/check_site.mjs').includes(`const SITE = '${SITE_ORIGIN}';`),
+    'tools/check_site.mjs 的 SITE 与这里的 SITE_ORIGIN 分叉了');
 });
 
 // ---------------------------------------------------------------- 网络优先
