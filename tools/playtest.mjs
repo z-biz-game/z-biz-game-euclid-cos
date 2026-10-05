@@ -728,7 +728,10 @@ const SCENARIOS = {
     c.autoWin(); await sleep(120);
     const id = c.state.sourceId;
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
-    rec('这一胜落到 localStorage（只有一个键）', !!(raw && raw.records[id] && raw.records[id].won) && Object.keys(raw).sort().join(',') === 'daily,records,stats,unlocked', raw && Object.keys(raw));
+    // 段集合由 js/core/storage.js 的 blank() 决定，是五段（settings 管静音/教学，比另外四段晚生）。
+    // 出处在 node 侧：test/storage.test.mjs 的 SECTIONS 断言拿同一份字面量比对落盘 JSON，
+    // 所以新增一段必须两边一起改 —— 只改一边就会在这里以 FAIL 的形式露头，而不是悄悄漂着。
+    rec('这一胜落到 localStorage（只有一个键）', !!(raw && raw.records[id] && raw.records[id].won) && Object.keys(raw).sort().join(',') === 'daily,records,settings,stats,unlocked', raw && Object.keys(raw));
     rec('只有一个存档键被写', Object.keys(localStorage).filter((k) => /euclid\\./.test(k)).length === 1, Object.keys(localStorage));
     // The demo button is NOT a win: 照表收局 writes a cleared record but leaves the campaign
     // frontier alone, because only the click path runs settle(), which is where unlock() lives.

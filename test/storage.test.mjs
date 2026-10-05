@@ -43,6 +43,25 @@ test('storage: 存档键名与 schema 只有一个字符串', () => {
   eq(KEY, 'euclid.save.v1');
 });
 
+// 落盘 JSON 的段集合。tools/playtest.mjs 的 @save 里那条字面量以这里为出处：段数一旦变了而两边
+// 没一起改，先红的应该是这条（node，秒级），而不是只有跑得起 Chrome 的人才看得见的 @save。
+const SECTIONS = 'daily,records,settings,stats,unlocked';
+
+test('storage: 落盘的段集合恰好是 schema 那五段，多一段少一段都算脏', async () => {
+  const ls = fakeLS();
+  const m = await fresh(ls);
+  m.store.finish('nugget-01', { won: true, plies: 5, hints: 0 });
+  const parsed = JSON.parse(ls.getItem(KEY));
+  eq(Object.keys(parsed).sort().join(','), SECTIONS, `实际 ${JSON.stringify(Object.keys(parsed).sort())}`);
+  eq(typeof parsed.settings, 'object', '一次没调过设置，settings 也得在场（blank() 带着它出生）');
+  eq(Object.keys(parsed.settings).length, 0, '但它是空段，不是被塞了默认值');
+  m.store.setSetting('muted', true);
+  const after = JSON.parse(ls.getItem(KEY));
+  eq(Object.keys(after).sort().join(','), SECTIONS, '写设置不许开出第六段');
+  eq(after.settings.muted, true);
+  eq(ls._map.size, 1, '两段式写完之后仍然只有一个键');
+});
+
 test('storage: node 进程里没有可持久化的存档 —— requireBackend 抛异常而不是返回 null', async () => {
   const m = await fresh(null);
   eq(m.SAVE_KEY, KEY);
