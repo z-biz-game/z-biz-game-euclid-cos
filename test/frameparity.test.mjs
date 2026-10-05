@@ -45,6 +45,22 @@ function lcg(seed) {
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
 }
 
+// 桩要照 index.html 真的建：把每个带 id 的标签上声明的属性原样搬进桩元素（aria-pressed、role、
+// aria-live、hidden 都在里面）。否则第 5 支断言量到的是桩的默认值，产品写成什么样都测不出来。
+const HTML = (() => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const attrs = new Map();
+  for (const m of html.matchAll(/<([a-z0-9]+)((?:[^>"']|"[^"]*"|'[^']*')*)>/gi)) {
+    const idm = /\bid="([^"]+)"/.exec(m[2]);
+    if (!idm) continue;
+    const a = {};
+    for (const p of m[2].matchAll(/([\w:-]+)(?:="([^"]*)")?/g)) a[p[1]] = p[2] === undefined ? '' : p[2];
+    attrs.set(idm[1], a);
+  }
+  return { attrs, get: (id) => attrs.get(id) || {}, ariaPressed: new Map([...attrs].filter(([, a]) => 'aria-pressed' in a).map(([id, a]) => [id, a['aria-pressed']])) };
+})();
+let liveRegion = null;
+
 // ---------------------------------------------------------------- 外壳的 DOM 桩
 // 只够 main.js / view.js / hud.js / storage.js / pwa.js 真的跑起来：它们碰到的全局一共就这些
 // （document.getElementById、canvas 2d、localStorage、matchMedia、navigator.clipboard、rAF）。
@@ -124,6 +140,13 @@ function installShellEnv() {
       node.width = 360; node.height = 240;
       const ctx = makeCtx();
       node.getContext = () => ctx;
+    }
+    const declared = HTML.get(id);
+    node.attrs = Object.assign({}, declared);
+    if ('hidden' in declared) node.hidden = true;
+    node.getAttribute = (k) => (k in node.attrs ? node.attrs[k] : null);
+    if (id === 'toast') {
+      liveRegion = { role: node.attrs.role || null, live: node.attrs['aria-live'] || null, hidden: node.hidden };
     }
     return node;
   }
@@ -334,7 +357,54 @@ test('frameparity: 三档的关卡不变量逐字相同（同一段着法串，�
   console.log(`  [对拍] 三档终局 ${finals[0]}（每一档都相同）`);
 });
 
-// ---------------------------------------------------------------- 4 §6 阴性对照
+// ---------------------------------------------------------------- 4 重开复位的是什么
+// §2 要求"重开把时钟、缓冲、粒子、玩家位置、临时增益全部复位"。本仓没有粒子与玩家位置，
+// 但同样的坑在这里成立：重开漏掉缓存，就会有一刀预览、一枚提示条、一个临时增益跨过这一局。
+// 两个方向都要钉住：这一局的状态必须归零；设备级的会话时钟与它上面的倒计时**不该**被归零
+// （提示条是"这条信息活 2600 毫秒"，与重开无关；把它一起 cancel 掉，用户按 R 就看到一条凭空消失的提示）。
+test('frameparity: 重开复位的是真状态 —— 预览/提示数/手数/棋谱归零，会话时钟不被一局带走', () => {
+  const api = live.api;
+  api.restart();
+  api.hintOnce();                                   // 手上留一刀预览 + 一枚 2600ms 的提示条
+  const shot = (s) => ({ a: s.a, b: s.b, plies: s.plies, hints: s.hints, kPreview: s.kPreview, turn: s.turn, history: s.history.length, status: s.status });
+  const dirty = shot(api.state);
+  ok(dirty.kPreview !== null && dirty.hints > 0, `脏状态没造出来（${JSON.stringify(dirty)}），后面的归零就是空跑`);
+  const simBefore = api.simMs();
+  const pendingBefore = api.pending();
+  api.restart();
+  const clean = shot(api.state);
+  eq([clean.kPreview, clean.plies, clean.hints, clean.history], [null, 0, 0, 0],
+     `重开之后残留 ${JSON.stringify({ before: dirty, after: clean })}`);
+  eq([clean.a, clean.b], [dirty.a, dirty.b], '重开是回到同一根金条，不是换一局');
+  eq(clean.status, 'playing');
+  eq(live.env.getEl('toast').hidden, false, '重开不许把已经排下的提示条偷偷取消');
+  eq(api.pending(), pendingBefore, '倒计时该还在，只是这一局的账清了');
+  for (let i = 0; i < 5; i++) { cursor.ts += 16.7; live.env.frames(cursor.ts); }
+  ok(api.simMs() > simBefore, `会话时钟该继续走（${simBefore} → ${api.simMs()}），重开不该把它抹成 0`);
+  console.log(`  [重开] 脏 ${JSON.stringify(dirty)} → 净 ${JSON.stringify(clean)}，sim ${simBefore.toFixed(1)} → ${api.simMs().toFixed(1)}`);
+});
+
+// ---------------------------------------------------------------- 5 辅助技术读得到系统条
+// 系统条的四个开关与 toast 是同一层：状态靠 aria-pressed 表达、反馈靠 live region 播报。
+// 缺任何一支，"已静音 / 已暂停"对屏幕阅读器就根本不存在 —— 判据写在 DOM 上，量也必须量 DOM。
+test('frameparity: #toast 是 live region，系统条的按压态真的写在 aria-pressed 上', () => {
+  ok(liveRegion, 'DOM 桩没量到 #toast 的标签');
+  eq(liveRegion.live, 'polite', `aria-live 应为 polite，实测 ${liveRegion.live}`);
+  eq(liveRegion.role, 'status', `role 应为 status，实测 ${liveRegion.role}`);
+  eq(liveRegion.hidden, true, '开局不该有一条待播的旧文案');
+
+  const pause = live.env.getEl('pause');
+  eq(HTML.ariaPressed.get('pause'), 'false', 'index.html 里 #pause 的初值必须是 false（桩照它建）');
+  eq(pause.getAttribute('aria-pressed'), 'false');
+  live.env.fire('window', 'keydown', { key: ' ', target: live.env.getEl('hintline') });
+  eq(pause.getAttribute('aria-pressed'), 'true', `按 Space 之后 aria-pressed 要翻过来，实测 ${pause.getAttribute('aria-pressed')}`);
+  eq(live.env.getEl('paused').hidden, false, '暂停面板该真的露出来');
+  live.env.fire('window', 'keydown', { key: ' ', target: live.env.getEl('hintline') });
+  eq(pause.getAttribute('aria-pressed'), 'false', '再按一次要翻回去');
+  console.log(`  [a11y] #toast role=${liveRegion.role} aria-live=${liveRegion.live} · #pause aria-pressed false→true→false`);
+});
+
+// ---------------------------------------------------------------- 6 §6 阴性对照
 test('frameparity: 负面控制 —— simMs += elapsed 改成 += 1 之后墙钟比值 > 3.6（尺子有牙）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'euclid-fpmut-'));
   try {

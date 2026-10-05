@@ -1,6 +1,7 @@
 // Desktop shell: the game is a browser build, so Electron serves it over the same
 // zero-dependency static server instead of file:// (ES module imports need an origin).
 const { app, BrowserWindow } = require('electron');
+const path = require('node:path');
 const { startServer } = require('../server.cjs');
 
 async function createWindow() {
@@ -13,6 +14,9 @@ async function createWindow() {
     minHeight: 620,
     backgroundColor: '#171310',
     title: '割金 Euclid',
+    // Windows/Linux take the window icon from here (macOS reads it from the app bundle). Without
+    // it the desktop build ships wearing Electron's own logo instead of this game's.
+    icon: path.join(__dirname, '..', 'icons', 'icon-512.png'),
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,

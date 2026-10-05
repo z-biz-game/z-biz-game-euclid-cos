@@ -9,6 +9,7 @@
     "dev": "node server.cjs 5221",
     "electron": "electron .",
     "bake": "node tools/bake.mjs",
+    "site": "node tools/check_site.mjs --assemble _site",
     "art": "python3 assets/gen/make_art.py --install",
     "art:check": "python3 assets/gen/make_art.py --selftest",
     "check": "for f in js/*.js js/*/*.js sw.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check \"$f\" || exit 1; done && echo OK",
@@ -35,8 +36,9 @@
   "build": {
     "appId": "com.zbiz.euclid",
     "productName": "Euclid",
-    "mac": { "category": "public.app-category.puzzle-games" },
-    "win": { "target": "nsis" },
-    "linux": { "target": "AppImage" }
+    "icon": "icons/icon-1024.png",
+    "mac": { "category": "public.app-category.puzzle-games", "icon": "icons/icon-1024.png" },
+    "win": { "target": "nsis", "icon": "icons/icon-1024.png" },
+    "linux": { "target": "AppImage", "icon": "icons" }
   }
 }
