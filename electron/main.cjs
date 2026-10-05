@@ -12,7 +12,10 @@ async function createWindow() {
     height: 880,
     minWidth: 840,
     minHeight: 620,
-    backgroundColor: '#171310',
+    // 与 --c-paper / <meta theme-color> / manifest 的 theme_color+background_color 同值：
+    // 建窗到页面首帧之间露出的就是这个数，它和页面底色不一致时，启动会闪一块不同的黑，
+    // 窗口被拉到非整数倍尺寸时边缘也会漏出第二种颜色。下面这条由 test/pwa.test.mjs 逐字对。
+    backgroundColor: '#12100e',
     title: '割金 Euclid',
     // Windows/Linux take the window icon from here (macOS reads it from the app bundle). Without
     // it the desktop build ships wearing Electron's own logo instead of this game's.

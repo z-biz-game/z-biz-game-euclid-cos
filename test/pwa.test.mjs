@@ -241,6 +241,25 @@ test('社交卡：标签齐全、URL 绝对、宣称尺寸对得上 IHDR 实测'
     'tools/check_site.mjs 的 SITE 与这里的 SITE_ORIGIN 分叉了');
 });
 
+// ---------------------------------------------------------------- 启动时那一块底色
+// 建窗到页面首帧之间屏上露出的就是 Electron 的 backgroundColor；它与页面底色不同值，启动就闪
+// 一块别的黑，窗口停在非整数倍尺寸时边缘还会漏出第二种颜色。这五处散在四种语言、四个文件里，
+// 没有任何机制会让它们同步 —— 只有这张表能做到"改色漏掉哪一处立刻红"。
+test('底色五处同值：css 变量 / meta theme-color / manifest 两色 / Electron 窗口色', () => {
+  const found = {
+    'css/game.css --c-paper': (read('css/game.css').match(/--c-paper:\s*([^;]+);/) || [])[1],
+    'index.html meta theme-color': (read('index.html').match(/name="theme-color"\s+content="([^"]+)"/) || [])[1],
+    'manifest theme_color': JSON.parse(read('manifest.webmanifest')).theme_color,
+    'manifest background_color': JSON.parse(read('manifest.webmanifest')).background_color,
+    'electron/main.cjs backgroundColor': (read('electron/main.cjs').match(/backgroundColor:\s*'([^']+)'/) || [])[1],
+  };
+  const malformed = Object.entries(found).filter(([, v]) => !/^#[0-9a-f]{6}$/.test(String(v))).map(([k, v]) => `${k}=${v}`);
+  assert.deepEqual(malformed, [], `写法不对或读不到（必须小写 #rrggbb）: ${malformed.join(' / ')}`);
+  const values = new Set(Object.values(found));
+  assert.equal(values.size, 1, `五处分叉: ${Object.entries(found).map(([k, v]) => `${k}=${v}`).join('  ')}`);
+  console.log(`  [底色] ${values.size} 种值 / 5 处同值 ${[...values][0]}`);
+});
+
 // ---------------------------------------------------------------- 网络优先
 test('sw 联网那一次：用网络的答案，并把它回填进缓存', async () => {
   const { events, caches, fire, settle, state, wait } = loadSW();
