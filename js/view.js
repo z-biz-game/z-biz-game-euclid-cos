@@ -53,7 +53,9 @@ function readTokens() {
 
 export function createView(canvas, getState, opts = {}) {
   const ctx = canvas.getContext('2d');
-  const reducedMotion = opts.reducedMotion === true;
+  // 可变：系统偏好会在会话中途翻转（辅助功能面板一点就生效），所以这是一个由外壳推进来的状态，
+  // 不是构造时读一次的常量。初值仍按 opts 取，未设置过就当作"允许动效"。
+  let reducedMotion = opts.reducedMotion === true;
   const PAL = typeof document === 'undefined' ? {} : readTokens();
   let dpr = 1;
   let cssW = 0;
@@ -341,6 +343,8 @@ export function createView(canvas, getState, opts = {}) {
     resize,
     draw,
     layout,
+    // 只改状态、不自己重画：重画归外壳的 render() 管，否则一次偏好转峰会画两遍。
+    setReducedMotion(v) { reducedMotion = !!v; return reducedMotion; },
     cutPoint,
     colAt,
     kAt,

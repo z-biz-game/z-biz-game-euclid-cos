@@ -341,8 +341,21 @@ function nextLot() {
 }
 
 // ------------------------------------------------------------------ gestures
-const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// prefers-reduced-motion 是活的：辅助功能面板里翻一下开关，CSS 那侧的 media query 当场生效，
+// 而只在开机读一次的 canvas 这侧会照旧动 —— 半新半旧的画面比两张都旧更难解释。所以这里订阅
+// change，把新值推进 view 再重画（view 自己不重画，重画归 render，一次转峰只画一遍）。
+const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+const reducedMotion = !!(motionQuery && motionQuery.matches);
 const view = createView(el.board, () => game.match, { reducedMotion });
+const motionSubscribed = (() => {
+  if (!motionQuery) return false;
+  const apply = (e) => { view.setReducedMotion(!!e.matches); render(); };
+  // Safari 14 以前的 MQL 只有 addListener，这条回落不是怀旧：老 iOS 上"减弱动态效果"是真需求。
+  if (motionQuery.addEventListener) motionQuery.addEventListener('change', apply);
+  else if (motionQuery.addListener) motionQuery.addListener(apply);
+  else return false;
+  return true;
+})();
 
 function onDown(ev) {
   if (game.match.status !== 'playing') return;
@@ -612,6 +625,9 @@ const api = {
   verifyShipped: () => verifyPool(),
   pwa: pwaStatus,
   hud: () => hud.status(),
+  // reduceMotion 的现值与"订阅有没有真的挂上"：判据是"翻转偏好当场改画"，
+  // 读数必须能从外面拿到，否则这条只能靠人眼看。
+  motion: () => ({ reducedMotion: view.metrics().reducedMotion, subscribed: motionSubscribed }),
   // 原始读数（不取整）：帧率对拍要比 `simMs` 的小数部分，取整之后 30Hz 与 120Hz 的
   // 一帧之差（33.3ms vs 8.3ms）会被抹成同一个数，判尺就空跑了。
   simMs: () => clock.simMs,

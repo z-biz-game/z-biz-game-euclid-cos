@@ -84,12 +84,16 @@ function installShellEnv() {
   const frames = (ts) => { const q = raf.splice(0, raf.length); for (const cb of q) cb(ts); return q.length; };
 
   const gradient = () => ({ addColorStop() {} });
+  // 描边矩形要被量到：reduceMotion 那条判据的证据就是"切块预览的轮廓到底偏移了几个像素"，
+  // 全吞成空函数的桩只能证明"画过"，证明不了"画在哪"。
+  const strokes = [];
   const ctxHard = {
     measureText: () => ({ width: 8 }),
     createLinearGradient: gradient,
     createRadialGradient: gradient,
     createPattern: () => ({ setTransform() {} }),
     getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+    strokeRect: (x, y, w, h) => { strokes.push({ x, y, w, h }); },
   };
   const makeCtx = () => new Proxy(ctxHard, {
     get: (t, k) => (k in t ? t[k] : (typeof k === 'string' ? () => {} : undefined)),
@@ -187,10 +191,34 @@ function installShellEnv() {
     body: makeEl('body'),
   };
 
+  // 可翻转的 MQL：matches 恒 false 的桩造不出"系统偏好中途改了"这条判据 —— 翻转必须真的把
+  // change 回调打出去，并且按媒体查询分别记账（本仓只有 reduced-motion 一条订阅）。
+  const mqls = [];
+  const matchMedia = (q) => {
+    const m = {
+      media: String(q), matches: false, _h: [],
+      addEventListener(t, cb) { if (t === 'change') this._h.push(cb); },
+      removeEventListener(t, cb) { this._h = this._h.filter((f) => f !== cb); },
+      addListener(cb) { this._h.push(cb); },
+      removeListener(cb) { this._h = this._h.filter((f) => f !== cb); },
+    };
+    mqls.push(m);
+    return m;
+  };
+  const setReduceMotion = (v) => {
+    let fired = 0;
+    for (const m of mqls) {
+      if (!/reduced-motion/.test(m.media) || m.matches === !!v) continue;
+      m.matches = !!v;
+      for (const cb of m._h.slice()) { fired++; cb({ media: m.media, matches: !!v }); }
+    }
+    return fired;
+  };
+
   const globals = {
     document: documentStub,
     innerWidth: 390, innerHeight: 844, devicePixelRatio: 2,
-    matchMedia: (q) => ({ media: q, matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }),
+    matchMedia,
     requestAnimationFrame: (cb) => { raf.push(cb); return raf.length; },
     cancelAnimationFrame: () => {},
     AudioContext: AudioContextStub,
@@ -210,7 +238,7 @@ function installShellEnv() {
   }
   Object.defineProperty(globalThis, 'window', { value: globalThis, writable: true, configurable: true });
 
-  return { getEl, frames, raf, fire, documentStub, localStorage };
+  return { getEl, frames, raf, fire, documentStub, localStorage, strokes, setReduceMotion, mqls };
 }
 
 // 真外壳：DOM 桩装上之后 import 仓里的 js/main.js（它是这一页唯一的入口）。
@@ -404,7 +432,50 @@ test('frameparity: #toast 是 live region，系统条的按压态真的写在 ar
   console.log(`  [a11y] #toast role=${liveRegion.role} aria-live=${liveRegion.live} · #pause aria-pressed false→true→false`);
 });
 
-// ---------------------------------------------------------------- 6 §6 阴性对照
+// ---------------------------------------------------------------- 6 reduceMotion 是活的
+// §2 要的是"有真分支"，而分支只在开机时读一次等于没有：辅助功能面板里翻一下"减弱动态效果"，
+// CSS 那侧的 media query 当场生效，canvas 这侧照旧动，画面就半新半旧。这里量的就是这一次翻转：
+// 预览轮廓必须当场从"抬起 off 像素"变成"贴回原位"，并且翻回去还能恢复（单向的分支不算活）。
+test('frameparity: 系统偏好中途翻转 reduceMotion，画布当场改画且可逆', () => {
+  const api = live.api, env = live.env;
+  eq(api.motion().subscribed, true, 'MQL 的 change 订阅没挂上 ⇒ 偏好翻转对 canvas 一侧根本不可达');
+  eq(api.motion().reducedMotion, false, '桩里初值应为"允许动效"（matchMedia 默认 matches:false）');
+
+  const board = env.getEl('board');
+  const cell = api.view.metrics().cell;
+  const expected = Math.min(cell * 0.35, 6);        // view.js 里那一点抬起量：off = min(cell*0.35, 6)
+  const p = api.view.cutPoint(api.state.q);          // 最右一块的中心：k = q，预览块数最多，轮廓最好认
+
+  const drawOnce = () => {
+    api.restart();                                    // 清掉上一刀的预览与棋谱，剩下的 strokeRect 只有预览轮廓
+    env.strokes.length = 0;
+    env.fire(board, 'pointermove', { clientX: p.x, clientY: p.y });
+    return env.strokes.slice();
+  };
+
+  const animated = drawOnce();
+  ok(animated.length >= 2, `预览至少该画出 ${api.state.q} 块轮廓，实测 ${animated.length} 笔`);
+  eq(api.state.kPreview, api.state.q, '预览没建立 ⇒ 后面比的是一帧什么都没画的空跑');
+
+  const fired = env.setReduceMotion(true);
+  ok(fired >= 1, '翻转偏好后一个 change 回调都没开火 ⇒ 订阅是假的');
+  eq(api.motion().reducedMotion, true, 'view 的读数没跟上翻转');
+  const still = drawOnce();
+  eq(still.length, animated.length, '退化该只改位移，不该少画或多画一笔');
+  const dx = animated[0].x - still[0].x;
+  const dy = still[0].y - animated[0].y;              // 动效态轮廓往上抬 off，静图态贴回 originY
+  ok(Math.abs(dx - expected) < 0.5, `静图态 x 该收回 ${expected.toFixed(2)}px，实测收回 ${dx.toFixed(2)}px`);
+  ok(Math.abs(dy - expected) < 0.5, `静图态 y 该收回 ${expected.toFixed(2)}px，实测收回 ${dy.toFixed(2)}px`);
+  ok(expected > 0, `cell=${cell} 下动效位移为 0，这条判据没有可量的东西`);
+
+  env.setReduceMotion(false);
+  eq(api.motion().reducedMotion, false, '翻回去没生效（单向分支）');
+  const back = drawOnce();
+  eq([back[0].x, back[0].y], [animated[0].x, animated[0].y], '翻回"允许动效"之后轮廓必须回到抬起的那一点');
+  console.log(`  [reduceMotion] 动效位移 ${expected.toFixed(2)}px（cell=${cell}）：轮廓 x ${animated[0].x.toFixed(1)} → 静图 ${still[0].x.toFixed(1)} → 翻回 ${back[0].x.toFixed(1)}，change 开火 ${fired} 次`);
+});
+
+// ---------------------------------------------------------------- 7 简报 §6 阴性对照
 test('frameparity: 负面控制 —— simMs += elapsed 改成 += 1 之后墙钟比值 > 3.6（尺子有牙）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'euclid-fpmut-'));
   try {
