@@ -24,8 +24,8 @@ Lamé 那一侧仍然成立，只是不再是"最长对局"：`n=1..9` 次除法
 
 ## 2. 两条独立路线，逐状态对齐
 
-* **路线 1**：`js/core/retro.js` —— 自底向上的穷举格 `table(bound)` 加记忆化递归 `solve(a,b)`。两条实现互查。
-* **路线 2**：`js/core/golden.js` —— 纯整数 φ 代数：`a² < ab + b²` 判负，`winningK` 用取整把唯一胜口算出来，`depth` 用连分数的部分商加插入数算出来。
+* **路线 1**：`js/core/retro.js` —— 自底向上的穷举格（`js/core/retro.js:114` 的 `table`）加记忆化递归（`js/core/retro.js:33` 的 `solve`）。两条实现互查。
+* **路线 2**：`js/core/golden.js` —— 纯整数 φ 代数：`a² < ab + b²` 判负，用取整把唯一胜口算出来（`js/core/golden.js:80` 的 `winningK`），`depth` 用连分数的部分商加插入数算出来（`js/core/euclid.js:158` 的 `cfLength` 加 `js/core/golden.js:104` 的 `slowSteps`）。
 
 烘焙前逐局面比对，浏览器里再算一次：
 
@@ -72,12 +72,12 @@ npm run electron   # 桌面壳
 
 | 页面上看到的 | 来源（唯一实现） |
 |---|---|
-| 判定 必胜/必败 | `book.js lookup()` 的 `value` ← 烘焙前由 `retro.js` 与 `golden.js` 各自独立量出并比对 |
+| 判定 必胜/必败 | `value` 出自（`js/core/book.js:136` 的 `lookup`） ← 烘焙前由 `retro.js` 与 `golden.js` 各自独立量出并比对 |
 | 帕 | `BOOK` 行的 `depth`（`retro.js`） |
 | 唯一胜口 k | `BOOK` 行的 `k` |
 | q、可切 1–q | `euclid.js quotient(a,b) = ⌊a/b⌋` |
-| `a² − ab − b²` | `euclid.js margin(a,b)`（整数，无浮点） |
-| 比值 `a/b` 的显示 | `euclid.js ratioText()`——长除逐位，不是 `a/b` 的浮点打印 |
+| `a² − ab − b²` | （`js/core/euclid.js:133` 的 `margin`，整数、无浮点） |
+| 比值 `a/b` 的显示 | （`js/core/euclid.js:171` 的 `ratioText`）——长除逐位，不是 `a/b` 的浮点打印 |
 | 猜中率 `1/q` | `library.js derive().chance` |
 | 已切/总方金数 | `game.js` 累加 / `euclid.js squareCount = Σ 部分商` |
 | φ·b 那条虚线的位置 | `view.js goldenPx()`——**全仓唯一用浮点的地方**，只画线，不参与任何判定 |
@@ -89,13 +89,14 @@ npm run electron   # 桌面壳
 * 8 个 node 套件、**172 行断言、0 失败**：`euclid 25 · golden 13 · retro 16 · book 34 · game 29 · library 25 · storage 17 · bake 13`。期望值来自 `test/fixture.mjs`（先手算在纸上，再写进代码）与 `tools/bake.mjs` 的真实输出。
 * `bash tools/verify.sh` 在真实 headless Chrome 里跑 5 个场景、**131 行断言、0 失败**：`@boot 20 · @play 29 · @routes 21 · @save 16 · @pointer 45`。`@pointer` 用 CDP 派发真的鼠标事件、`Emulation.setDeviceMetricsOverride` 装窄屏、`Page.navigate` 真重载，并且直接读 canvas 像素（"金色方格数 == a×b"、`a·cell+(a−1)·gap` 的像素跨度、φ·b 虚线上的墨色计数）。
 * 空套件算失败：一个场景报告 0 行断言时 `verify.sh` 直接判负——静默死掉的 harness 看起来最像绿。
+* `npm test` 是三步：`check`（逐文件语法）+ `unit`（上面那 8 个套件）+ 文档行号对账那一条腿（15 项判据、`rows: 15 fail: 0`）。CI 的 unit job 跑的是同样三条命令，读数直接进日志。
 * CI：`.github/workflows/ci.yml` 三个 job（node 套件 / 重烘焙确定性 `cmp` + 页面骨架 / headless 浏览器），Pages：`.github/workflows/pages.yml` 调 `bash tools/assemble-site.sh` 拷出 `_site`——「拷哪些」只住在那份清单里，文档不再手抄一遍。**全仓零依赖，任何地方都不需要 `npm install`。**
 
 ## 8. 目录
 
 ```
 index.html  css/  js/{main.js,view.js,core/*.js,data/lots.js}  server.cjs  electron/
-tools/{bake.mjs,harness.mjs,playtest.mjs,verify.sh}  test/{fixture.mjs,naive.mjs,*.test.mjs}
+tools/{bake.mjs,harness.mjs,playtest.mjs,verify.sh,assemble-site.sh,deploy-set.mjs,deploy-set-selftest.mjs,docs-test.mjs}  test/{fixture.mjs,naive.mjs,*.test.mjs}
 ```
 
 `js/core/*` 不碰 DOM（除 `storage.js` 里那处被 `requireBackend()` 守住的 `window`），所以 node 能直接 import 规则层；`js/view.js` 只画像素，`js/main.js` 只做路由/渲染/存档，判定一律来自表查询。
@@ -146,6 +147,29 @@ X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上�
 （package.json 里的 `deploy-set` / `deploy-set:selftest` 只是同一支脚本的 npm 入口）；本仓的整闸在 `tools/verify.sh` 的 `=== deploy-set ===` 那一段也各跑一次。它们红的时候并进本仓那条出口的退出码——这一条是这么证的：
 把 ci.yml 里那行 `run: node tools/deploy-set.mjs` 砍掉，本仓整闸必须点名红且退出码非 0。
 所以「本地全绿、线上 404 自己的 manifest / sw.js / 图标」这一类坏法在本地就会红。
+
+## 文档行号对账
+
+这三份文档里的 `path:NN` 是证据不是装饰：行号漂到隔壁一句，读者按图索骥就拿到一个错出处，
+而 node 套件与真浏览器闸一句都不会红。这一段由 `tools/docs-test.mjs` 守着——`npm test`
+的最后一步，CI 里是 `Docs citation leg` 那个 step，读数直接进 CI 日志。
+
+本轮实量（改完文档必须重跑，六个数会一起动）：3 份文档 · 18 条引用 · 9 条带指认 ·
+0 条续引 · 0 条跨仓 · 文档行号对账 15 条判据，`rows: 15 fail: 0`。
+
+到货时红了三处，三处都是文档自己的问题：
+
+- DESIGN 第 9.12 条里有一处少了 `js/core/` 前缀的裸引用，在仓里定不到址；已补全。
+  同一句在 deliverable 里那一份本来就写全了，所以两条现在指向同一行。
+- README 此前一条带行号的引用都没有：§2 说"两条独立路线"、§6 说每张表"唯一实现"，
+  却没有一行指到实现处。现在这两节共九处带行号，且都写成「行号 + 的名字 + 标识符」，
+  锚点腿因此能逐条核对那个标识符真的在被指的那几行里。
+- 抄写台账六个数一处都没写。读数从文档里消失时，闸不许继续读绿——这条也是判据之一。
+
+这条腿自己也要能红，三刀都只改文档（不碰代码，也不改任何文档的行数，否则引用会整批漂）：
+把一条引用的行号推到被引文件真实行数之外，范围腿必须点名红；把一处带指认的引用搬到同一
+文件里不含那个标识符的行，锚点腿必须红而范围腿不许跟着红；把台账里的份数抹掉，抄写台账
+必须红在「一处都没写」。
 
 ## 在线试玩
 
