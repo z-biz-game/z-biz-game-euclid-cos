@@ -124,7 +124,7 @@ campaign deepest: 29×12 帕7 (k=1, q=2) · book deepest: 帕8 at 41:29 (17 posi
 9. **烘焙"逐字节相同"要减去 `BAKED_AT` 行**：`tools/bake.mjs` 自己就写了这件事。CI 的确定性检查与 `test/bake.test.mjs` 都按"归一化那一行后 `cmp`"来做。
 10. **数花括号切 JSON 会被字符串里的花括号骗**：`@save` 故意把 `'{oops'` 这种坏存档当证据打印出来，朴素扫描器于是永远找不到 JSON 结尾。`verify.sh` 的花括号计数器现在走字符串字面量（含转义）。
 11. **`document.getElementById('x').hidden` 与 `aria-hidden` 不等价**，`ks` 在终局是 `hidden` + 清空 innerHTML 两件事一起做，断言只查一个会漏。
-12. 四处**陈旧注释**指向 `test/anchor.test.mjs`，而那个文件在本仓不存在（前任 agent 留下的引用）：`js/core/euclid.js:164`、`js/core/golden.js:6`、`test/euclid.test.mjs:197`、`test/euclid.test.mjs:280`。这些恒等式现在实际由 `test/euclid.test.mjs`、`test/golden.test.mjs` 与 `test/bake.test.mjs` 断言；`golden.js:6` 引的 `DESIGN §2` 就是本文件第 2 节。
+12. 四处**陈旧注释**指向 `test/anchor.test.mjs`，而那个文件在本仓不存在（前任 agent 留下的引用）：`js/core/euclid.js:164`、`js/core/golden.js:6`、`test/euclid.test.mjs:197`、`test/euclid.test.mjs:280`。这些恒等式现在实际由 `test/euclid.test.mjs`、`test/golden.test.mjs` 与 `test/bake.test.mjs` 断言；`js/core/golden.js:6` 引的 `DESIGN §2` 就是本文件第 2 节。
 13. **页内 `import` 用斜杠开头的路径，只有本机对**：`@routes` 要在页内拿 `library.js` 跟门面对身份，写的是 origin 根路径。本机的 `server.cjs` 把仓库当文档根，正好解得着；Pages 把站点挂在 `/z-biz-game-euclid-cos/` 下面，同一个串就 404，而一次失败的动态 import 会把整段注入脚本拦腰抛断——后面的断言一条都不跑，前面跑过的还可能因为没写完而红。兄弟仓 ulam 就这么在已部署站点上少了 19 行（44/63）。现在 `MOD(p)`（`tools/playtest.mjs:510`）以 `document.baseURI` 为基解析，`ci.yml` 的 browser job 除了原来的根形态，再把仓库软链到一个路径段下面跑同一批场景。
 
 ## 10. 已知不做 / 边界

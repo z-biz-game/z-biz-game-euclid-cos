@@ -20,9 +20,23 @@ jobs:
         with:
           node-version: 22
       - name: Syntax
-        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+        run: npm run check
       - name: Suites
-        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+        run: npm run unit
+      # 文档行号对账腿：README/DESIGN/deliverable 里每一条 `path:NN` 都要指回实处，
+      # 文档抄的六个读数必须等于本轮实数。文档说自己跑过 172 行断言、跑的是哪份清单，
+      # 这些话没有一条腿读过——加这一段之前，本仓的文档从来没有被任何闸核对过。
+      - name: Docs citation leg
+        run: node tools/docs-test.mjs
+      # 部署集闸：按 tools/assemble-site.sh 那份清单真拷一遍产物，要求页面会去要的东西
+      # 都在里面。这一仓曾经因为清单落后于页面而线上 404 自己的 manifest/sw.js/图标，
+      # 而本地一切全绿——因为本地根本没有「按清单拷」这一步。
+      - name: Deploy set gate
+        run: node tools/deploy-set.mjs
+      # 阴性自证：每一类断言当场被打红一次，闸必须点名吃掉那一刀；写在注释里的假路径
+      # 必须不算引用。钉住的条数由这一跑证明它真的会红，不是由记性证明。
+      - name: Deploy set gate proves it can fail
+        run: node tools/deploy-set-selftest.mjs
 
   # js/data/lots.js is GENERATED (tools/bake.mjs: bottom-up grid + φ algebra reconciled
   # state-for-state, then the campaign curated out of it), so it can drift from the code that

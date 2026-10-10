@@ -2,34 +2,17 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#12100e">
-<meta name="description" content="割金 · EUCLID：欧几里得博弈。一根 a×b 的金条，每次从长边切下若干块 b×b 的方金，正好铺满的人赢。每个局面的必胜/必败、唯一胜口与帕数由穷举递归与 φ 整数判据两条独立路线量出，棋书烘焙进页，浏览器里不搜索。">
-<meta property="og:type" content="website">
-<meta property="og:title" content="割金 · EUCLID — φ 判定的欧几里得博弈">
-<meta property="og:description" content="切金条、铺满者赢。必胜/必败由穷举格与 φ 整数判据两条独立路线逐局面量出，浏览器里不搜索。">
-<!-- 社交爬虫（FB / Twitter / Slack unfurl）只接受绝对 URL：写 "social/og-card.png" 那种相对路径
-     会被原样丢给解析器，卡片退化成无图纯文本 —— 图在盘上而分享出去没有图。部署域按 origin
-     （github.com:z-biz-game/z-biz-game-euclid-cos）与农场 Pages 约定推出，工具那侧
-     tools/check_site.mjs 会把这条绝对 URL 折回产物里的相对路径继续量字节，二者不许分叉。 -->
-<meta property="og:url" content="https://z-biz-game.github.io/z-biz-game-euclid-cos/">
-<meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-euclid-cos/social/og-card.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="夜里的工作台上横着一根 13×8 的金条，最左边那块 8×8 方金正被抬起，原位留下暗印；一条竖直虚线标出 φ·8 的位置，落在条头左侧一点点。">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="割金 · EUCLID — φ 判定的欧几里得博弈">
-<meta name="twitter:description" content="一根 a×b 的金条，每次切下 k 块 b×b 的方金，正好铺满者赢。判定来自烘焙进页的棋书，浏览器里不搜索。">
-<meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-euclid-cos/social/og-card.png">
-<meta name="twitter:image:alt" content="13×8 的金条与 φ·8 参考线：条头越过线必胜，没越过必败。">
-<meta name="apple-touch-fullscreen" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#171310">
+<meta name="description" content="割金 · EUCLID：欧几里得博弈。一根 a×b 的金条，每次从长边切下若干块 b×b 的方金，正好铺满的人赢。每个局面的必胜/必败、唯一胜口与帕数由穷举递归与 φ 整数判据两条独立路线量出，棋书烘焙进页，浏览器里不搜索。"><meta property="og:title" content="割金 · EUCLID"><meta property="og:description" content="割金 · EUCLID：欧几里得博弈。一根 a×b 的金条，每次从长边切下若干块 b×b 的方金，正好铺满的人赢。每个局面的必胜/必败、唯一胜口与帕数由穷举递归与 φ 整数判据两条独立路线量出，棋书烘焙进页，浏览器里不搜索。"><meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-euclid-cos/icons/icon-512.png"><meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-euclid-cos/icons/icon-512.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171310'/%3E%3Crect x='3' y='9' width='18' height='14' fill='%23d9a441'/%3E%3Crect x='3' y='9' width='14' height='14' fill='%23b8863b'/%3E%3Crect x='24' y='9' width='5' height='14' fill='%236d4f22'/%3E%3Cpath d='M21 4 L21 28' stroke='%23f3e7cf' stroke-width='1.4' stroke-dasharray='3 2'/%3E%3C/svg%3E">
 <title>割金 · EUCLID</title>
 <link rel="stylesheet" href="css/game.css">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 <header class="topbar">
@@ -38,6 +21,7 @@
     <button type="button" data-mode="campaign">战役</button>
     <button type="button" data-mode="daily">每日</button>
     <button type="button" data-mode="random">随机</button>
+      <button type="button" id="btn-fullscreen" aria-pressed="false" title="全屏 (F)">全屏</button>
   </nav>
   <div class="hud" role="toolbar" aria-label="系统">
     <button type="button" id="help" aria-label="玩法说明" title="玩法说明（H）">?</button>
@@ -131,5 +115,6 @@
 
 <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
 <script type="module" src="js/main.js"></script>
+  <script src="js/sw-register.js"></script>
 </body>
 </html>

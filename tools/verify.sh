@@ -35,7 +35,7 @@ if lsof -nP -iTCP:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "web port :$WEB_PORT is already LISTENING — pick WEB_PORT." >&2
   exit 7
 fi
-ORPHANS=$(pgrep -fl "remote-debugging-port" 2>/dev/null | grep -v "$$" | wc -l | tr -d ' ')
+ORPHANS=$(ps -Ao command= | awk '/remote-debugging[-]port/ && !/--type=/' | wc -l | tr -d ' ')  # instances, not procs: helpers repeat the flag
 if [ "${ORPHANS}" != "0" ] && [ -z "${ALLOW_ORPHAN_CHROME:-}" ]; then
   echo "$ORPHANS headless Chrome(s) with a remote-debugging-port are already running on this" >&2
   echo "machine. One at a time is the rule; verify that they are yours, then set" >&2
@@ -107,6 +107,11 @@ if [ -z "${SKIP_UNIT:-}" ]; then
     echo "--- $f"
     node "$f" || FAILED=1
   done
+  # 部署集闸：ci.yml 跑这两步、本地整闸以前一次都不跑。缺这一步就是「本地全绿、线上 404 自己的
+  # manifest / sw.js / 图标」这一整类坏法。它不碰 Chrome，也不读页面，纯查产物。
+  echo "=== deploy-set ==="
+  node tools/deploy-set.mjs || FAILED=1
+  node tools/deploy-set-selftest.mjs || FAILED=1
 fi
 
 export CDP_PORT
