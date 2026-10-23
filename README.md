@@ -60,7 +60,7 @@ two-route sweep 1<=b<=a<=1200: 720600 pairs · agree 720600 · disagree 0
 ```bash
 npm run dev        # 静态服务器 http://127.0.0.1:5221/（本仓固定端口）
 npm run check      # 逐文件 node --check
-npm run unit       # 8 个测试套件，全部走 tools/harness.mjs
+npm run unit       # 12 个测试套件，全部走 tools/harness.mjs
 npm run bake       # 重算棋书 + 重选题池，写 js/data/lots.js（确定性）
 npm run verify     # node 套件 + 真实 headless Chrome 打页面（CDP 9371）
 npm run electron   # 桌面壳
@@ -86,10 +86,10 @@ npm run electron   # 桌面壳
 
 ## 7. 测试与门禁（数量都是跑出来的）
 
-* 8 个 node 套件、**172 行断言、0 失败**：`euclid 25 · golden 13 · retro 16 · book 34 · game 29 · library 25 · storage 17 · bake 13`。期望值来自 `test/fixture.mjs`（先手算在纸上，再写进代码）与 `tools/bake.mjs` 的真实输出。
-* `bash tools/verify.sh` 在真实 headless Chrome 里跑 5 个场景、**131 行断言、0 失败**：`@boot 20 · @play 29 · @routes 21 · @save 16 · @pointer 45`。`@pointer` 用 CDP 派发真的鼠标事件、`Emulation.setDeviceMetricsOverride` 装窄屏、`Page.navigate` 真重载，并且直接读 canvas 像素（"金色方格数 == a×b"、`a·cell+(a−1)·gap` 的像素跨度、φ·b 虚线上的墨色计数）。
+* 12 个 node 套件、**218 行断言、0 失败**：`bake 13 · book 34 · clock 9 · euclid 25 · frameparity 10 · game 29 · golden 13 · hud 9 · library 25 · pwa 13 · retro 16 · storage 22`。期望值来自 `test/fixture.mjs`（先手算在纸上，再写进代码）与 `tools/bake.mjs` 的真实输出。
+* `bash tools/verify.sh` 在真实 headless Chrome 里跑 5 个场景、**133 行断言、0 失败**：`@boot 22 · @play 29 · @routes 21 · @save 16 · @pointer 45`。`@pointer` 用 CDP 派发真的鼠标事件、`Emulation.setDeviceMetricsOverride` 装窄屏、`Page.navigate` 真重载，并且直接读 canvas 像素（"金色方格数 == a×b"、`a·cell+(a−1)·gap` 的像素跨度、φ·b 虚线上的墨色计数）。
 * 空套件算失败：一个场景报告 0 行断言时 `verify.sh` 直接判负——静默死掉的 harness 看起来最像绿。
-* `npm test` 是三步：`check`（逐文件语法）+ `unit`（上面那 8 个套件）+ 文档行号对账那一条腿（15 项判据、`rows: 15 fail: 0`）。CI 的 unit job 跑的是同样三条命令，读数直接进日志。
+* `npm test` 是三步：`check`（逐文件语法）+ `unit`（上面那 12 个套件）+ 文档行号对账那一条腿（15 项判据、`rows: 15 fail: 0`）。CI 的 unit job 跑的是同样三条命令，读数直接进日志。
 * CI：`.github/workflows/ci.yml` 三个 job（node 套件 / 重烘焙确定性 `cmp` + 页面骨架 / headless 浏览器），Pages：`.github/workflows/pages.yml` 调 `bash tools/assemble-site.sh` 拷出 `_site`——「拷哪些」只住在那份清单里，文档不再手抄一遍。**全仓零依赖，任何地方都不需要 `npm install`。**
 
 ## 8. 目录
@@ -125,7 +125,7 @@ MIT。
   内联成 base64 的图标先解码再读同一段。后一条不是可选项：图标可能住在清单里而不是盘上的 `.png`
   （有的仓另有一条"零二进制文件"的承诺，那条只约束"有没有 .png 这个文件"）；如果 P 段只筛文件名，
   声明写 512 而真图 192 就一路放行。
-- **钉住两个数**：R 段实际检查的路径条数（`36`）与这一次跑的断言条数（`54`），两个数
+- **钉住两个数**：R 段实际检查的路径条数（`47`）与这一次跑的断言条数（`79`），两个数
   都钉在 `tools/deploy-set.mjs` 顶部的那对常量里。没改页面却掉了，说明解析断了；删掉一张图标会同时
   少一条 R10 与那张的 P1/P2，所以两个数一起钉，断言条数能漂就是闸在缩水的信号。这一节故意只写数值、
   不写那对常量的名字，也不写别仓文档闸的编号：有的仓的文档闸会拿"文档里出现过的同名标识号"回数它
@@ -136,7 +136,7 @@ MIT。
 各下一刀（X1 清单不收位图目录 / X2 模块边改名 / X3 CSS 写绝对路径 / X4 `start_url` 绝对 /
 X5 删光 >=512 图标 / X6 少一个必填字段 / X7 声明尺寸与真图不符 / X8 workflow 不调脚本 /
 X9 CI 不跑闸 / X10 是阴性对照——往入口 JS 追加一行只写在注释里的假路径，闸必须仍然绿、条数仍然
-`36`、断言仍然 `54`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
+`47`、断言仍然 `79`；X11 og:image 退回相对路径 / X12 og:image 的前缀指向别的 slug /
 X13 内联位图谎报尺寸——只在有靶子时下：X11/X12 要页面上那句 og:image，X13 要清单里真有一段 base64
 图标，没有就打印 SKIP；反过来 X1 没有位图目录可砍时改砍 css，P 段一位都不核时台架直接报靶子不够），
 要求每一刀都让闸**点名**变红。靶子从 `DEPLOY_SET_DUMP=1`

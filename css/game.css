@@ -166,53 +166,66 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
   .toast { transition: none; }
 }
 
-/* 中央分发：safe-area 兜底 */
+/* 刘海、圆角与浏览器手势条：凡是贴着视口边缘的东西都要让出 env(safe-area-inset-*)，
+   index.html 的 viewport 里有 viewport-fit=cover，否则这些像素在真机上是被吃掉的。 */
+.topbar {
+  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-left: calc(20px + env(safe-area-inset-left));
+  padding-right: calc(20px + env(safe-area-inset-right));
+}
+.stage {
+  padding-left: calc(20px + env(safe-area-inset-left));
+  padding-right: calc(20px + env(safe-area-inset-right));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
+}
+.toast { bottom: calc(26px + env(safe-area-inset-bottom)); }
 
-/* ---------- safe-area：刘海与主屏条不吃掉按钮（中央分发，akari-cos 同口径） ---------- */
-:root {
-  --sat: env(safe-area-inset-top, 0px);
-  --sar: env(safe-area-inset-right, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
-  --sal: env(safe-area-inset-left, 0px);
+/* k 按钮是这游戏最高频的命中目标，单独顶到 44×44（基线那条 min-width:40px 不够） */
+.ks button { min-width: 44px; min-height: 44px; padding: 8px 12px; }
+.modes button { min-height: 44px; }
+
+.hud { display: flex; gap: 6px; margin-left: auto; }
+.hud button {
+  min-width: 44px; padding: 6px 10px; font-size: 13px; color: var(--ink-dim);
+  background: transparent; border: 1px solid var(--line); border-radius: 8px;
 }
-html, body {
-  padding-left: var(--sal);
-  padding-right: var(--sar);
+.hud button:hover { color: var(--c-ink); border-color: var(--c-gold); }
+.hud button[aria-pressed="true"] {
+  color: var(--c-paper); background: var(--c-brass); border-color: var(--c-brass);
 }
-body {
-  padding-top: var(--sat);
-  padding-bottom: var(--sab);
-  min-height: 100vh;
-  min-height: 100dvh;
-}
-/* 贴边的固定/吸底元素自己让开主屏条，别让 home indicator 压住按钮 */
-.fixed-bottom, .bottom-bar, .hud-bottom, footer.app-footer {
-  padding-bottom: calc(var(--sab) + env(safe-area-inset-bottom, 0px));
+#help { font-weight: 700; }
+@media (max-width: 900px) {
+  .hud { margin-left: 0; order: 3; width: 100%; }
+  .totals { margin-left: 0; }
 }
 
-
-/* ============================================================
-   44px 触摸命中下限（Apple HIG 手机可用性底线）
-   每个真正可点的元素都要有 ≥44×44 CSS px 的命中盒。
-   min-height / min-width 是**硬下限**：只会把过小的盒子撑到 44px，
-   本来就够大的控件（宽药丸、整行列表项、大数字键）外形一点不变。
-
-   两处非平凡之处：
-   1) 需要 !important —— 各组件自己有 `.shelf button { min-width: 34px }`
-      这类更"贴身"的规则，类选择器的优先级高于任何标签堆叠，
-      不加的话这条底线会被组件规则逐个抵消。
-   2) 先把 --touch-min 定死：tapa / nurikabe 早就写了
-      `min-height: var(--touch-min)`，但全仓没有任何地方定义过这个变量，
-      无 fallback 的 var() 在计算值阶段整条作废 —— 那是个看着像 44px、
-      实际什么都不保证的死规则。这里补上定义，让它们原本的意图真正成立。
-   ============================================================ */
-:root { --touch-min: 44px; }
-button,
-select,
-input,
-textarea,
-a[href],
-[role="button"] {
-  min-height: 44px !important;
-  min-width: 44px !important;
+/* 暂停盖在金条上：只在 paused 期间存在，pointer-events 由 hidden 控制，不常驻 */
+.paused {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 4px;
+  background: rgba(10, 8, 6, 0.86); border-radius: 14px; text-align: center;
 }
+.paused[hidden] { display: none; }
+.paused-mark { margin: 0; color: var(--c-brass); font-size: 22px; letter-spacing: 4px; }
+.paused h2 { margin: 0 0 4px; font-size: 19px; }
+.paused-note { margin: 0 0 12px; color: var(--ink-dim); font-size: 13px; }
+
+/* 玩法说明：非模态，待在右侧栏里，永远不覆盖画布 —— @pointer 派的是真实鼠标事件，
+   任何盖住金条的浮层都会把那一刀吃到空处。 */
+.tutorial {
+  margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px;
+  font-size: 13px; color: var(--ink-dim);
+}
+.tutorial[hidden] { display: none; }
+.tutorial h2 { margin: 0 0 6px; font-size: 15px; color: var(--c-gold); letter-spacing: 1px; }
+.tutorial h3 { margin: 10px 0 4px; font-size: 13px; color: var(--c-ink); }
+.tutorial ol { margin: 0; padding-left: 20px; }
+.tutorial ol li { margin: 0 0 6px; }
+.tutorial b { color: var(--c-ink); }
+.keys { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+kbd {
+  display: inline-block; min-width: 18px; padding: 1px 5px; font: 12px ui-monospace, Menlo, monospace;
+  color: var(--c-ink); background: var(--c-tray); border: 1px solid var(--line); border-radius: 4px;
+}
+.tutorial-actions { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; }
+.tutorial-never { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
+.tutorial-never input { width: 20px; height: 20px; accent-color: var(--c-gold); }

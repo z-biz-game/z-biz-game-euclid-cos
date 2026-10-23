@@ -83,27 +83,54 @@ export function mountHud({ el, game, clock, audio, store, toast, onRestart = () 
   }
 
   // 4 ------------------------------------------------------------- 全屏
+  // 三套 API 一律**特性探测**，不做 UA 判断：老 iOS Safari 只有 webkit*，老 Edge 只有 ms*。
+  // 只认 document.fullscreenElement 的话，在那些浏览器上「退出全屏」会变成「再进一次」。
+  // （并线时另一侧有一份带前缀的实现，绑的是不存在的 #btn-fullscreen；前缀这份能力并到了这里。）
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement
+    || document.msFullscreenElement || null;
+  const fsRequest = (node) => node.requestFullscreen || node.webkitRequestFullscreen
+    || node.msRequestFullscreen || null;
+  const fsExit = () => document.exitFullscreen || document.webkitExitFullscreen
+    || document.msExitFullscreen || null;
+
   function toggleFullscreen() {
-    if (document.fullscreenElement) {
-      const out = document.exitFullscreen();
+    if (fsElement()) {
+      const exit = fsExit();
+      if (!exit) return false;
+      const out = exit.call(document);
       if (out && out.catch) out.catch((err) => toast('退出全屏失败：' + err.message, true));
       return false;
     }
     const node = document.documentElement;
-    if (!node.requestFullscreen) {
+    const request = fsRequest(node);
+    if (!request) {
+      // 不支持也要说清楚为什么：只把按钮变灰而不解释，玩家会以为这活根本没做完。
+      el.fullscreen.disabled = true;
+      el.fullscreen.title = '这个浏览器不提供元素全屏（iOS Safari 请用「添加到主屏幕」）';
       toast('这台设备不支持网页全屏', true);
       return false;
     }
-    const go = node.requestFullscreen({ navigationUI: 'hide' });
+    let go = null;
+    try {
+      // navigationUI 只对标准 API 有效，带前缀的那两个不吃这个参数。
+      go = node.requestFullscreen
+        ? node.requestFullscreen.call(node, { navigationUI: 'hide' })
+        : request.call(node);
+    } catch (err) {
+      toast('全屏被拒绝：' + err.message, true);
+      return false;
+    }
     if (go && go.catch) go.catch((err) => toast('全屏被拒绝：' + err.message, true));
     return true;
   }
   function syncFullscreen() {
-    const on = !!document.fullscreenElement;
+    const on = !!fsElement();
     el.fullscreen.setAttribute('aria-pressed', String(on));
     el.fullscreen.textContent = on ? '退出全屏' : '全屏';
   }
   document.addEventListener('fullscreenchange', syncFullscreen);
+  document.addEventListener('webkitfullscreenchange', syncFullscreen);
+  document.addEventListener('MSFullscreenChange', syncFullscreen);
 
   // 5 ------------------------------------------------------------- 玩法说明
   function showTutorial(v) {

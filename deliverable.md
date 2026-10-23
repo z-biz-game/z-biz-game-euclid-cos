@@ -32,13 +32,13 @@
 
 ```bash
 npm run check     # 逐文件 node --check → OK
-npm run unit      # 8 套件 172 行断言 · 0 失败
+npm run unit      # 12 套件 218 行断言 · 0 失败
 node tools/bake.mjs   # 两次，cmp（只归一化 BAKED_AT 行）→ 逐字节相同，且日志除计时外相同
-bash tools/verify.sh  # 5 场景 131 行断言 · 0 失败 · console 干净（只有一行 euclid v1 ready · 分歧 0）
+bash tools/verify.sh  # 5 场景 133 行断言 · 0 失败 · console 干净（只有一行 euclid v1 ready · 分歧 0）
 ```
 
-* **node 套件断言行数**：euclid 25 / golden 13 / retro 16 / book 34 / game 29 / library 25 / storage 17 / bake 13 = **172**，`rows: N fail: 0` 逐套件打印。
-* **浏览器场景**：`@boot 20 · @play 29 · @routes 21 · @save 16 · @pointer 45` = **131**。`@pointer` 走 CDP `Input.dispatchMouseEvent`（点 k 按钮、点画布、拖出边界、盘外坐标）、`Page.navigate` 真重载验存档、`Emulation.setDeviceMetricsOverride` 验 360×720、并直接读 canvas 像素。
+* **node 套件断言行数**：bake 13 / book 34 / clock 9 / euclid 25 / frameparity 10 / game 29 / golden 13 / hud 9 / library 25 / pwa 13 / retro 16 / storage 22 = **218**，`rows: N fail: 0` 逐套件打印。
+* **浏览器场景**：`@boot 22 · @play 29 · @routes 21 · @save 16 · @pointer 45` = **133**。`@pointer` 走 CDP `Input.dispatchMouseEvent`（点 k 按钮、点画布、拖出边界、盘外坐标）、`Page.navigate` 真重载验存档、`Emulation.setDeviceMetricsOverride` 验 360×720、并直接读 canvas 像素。
 * **必须失败的东西也测了**：越界查表抛 `MissError`（`拒绝现场搜索`）、`k=0`/`k>x`/非整数/错座位/终局后的输入各回一句话且局面不动、坏 JSON 存档、未知题号、陌生档位、没有可撤的撤销。
 * **端口**：本仓固定 `WEB_PORT 5221 / CDP_PORT 9371`（`tools/verify.sh` 头部列出七个邻居的分配）。预检用 `lsof` 两个端口 + `pgrep -fl remote-debugging-port`，被占就退出码 6/7/8，等兄弟 agent 跑完再重试。
 * **确定性**：`tools/bake.mjs` 无 `Math.random`、无计时依赖。`test/bake.test.mjs` 跑两遍烘焙（`PHI_CENSUS_MAXA=60`）、核对 `cmp` 相同（除 `BAKED_AT` 行）与 stdout 的 `wrote 32 lots`，再在进程内重算它打印的证据：`1161/669`、`maxDepth 8 且 17 个并列`、`reconcile 无问题`、逐格两路一致、`insertionExamples === 961`（于是 869 格帕==除法数）、唯一胜口 `44850 对 / 0 违例`、`phiCensus(200) === 20100 对 / 0 分歧`、Lamé `n=1..9` 对上 Fibonacci。默认的 `720600 对` 全量复核是 `node tools/bake.mjs` 自己那一步（4.08s）。
@@ -53,3 +53,60 @@ bash tools/verify.sh  # 5 场景 131 行断言 · 0 失败 · console 干净（�
 * 不做"每步都算"的开放棋盘：这仓的定位就是**表驱动**，任何现场搜索都视为回归。
 * 未修的历史遗留：`js/core/euclid.js:164`、`js/core/golden.js:6`、`test/euclid.test.mjs:197`、`test/euclid.test.mjs:280` 四处注释仍指向不存在的 `test/anchor.test.mjs`（恒等式的实际断言位置见 `DESIGN.md` §9.12）。
 * 两处**已修**的引擎/视图缺陷见 `DESIGN.md` §9.5、§9.6（90° 旋转标签贴反、`last.blocks` 不可迭代导致第一次渲染即抛）。
+
+---
+
+## 4. 并线收口这一轮（2026-10-22 追加）
+
+分叉点 `ab76d0f`。两侧各自往前走了：**本地侧 `210502f`** 重写了整份页面与实现（持久层收口、
+两段式解码、九张图标、社交卡、织理贴图、离线壳、键位与 HUD），并给它配了更强的测试
+（storage 22 条、pwa 13 条、clock/hud/frameparity 三个新套件）；**远端侧 `34ffbfa`** 加了部署集闸
+（`deploy-set.mjs` / `selftest` / `assemble-site.sh`）、CI 两种 URL 形态、`.gitignore` 与文档重写，
+app 上只动了三样（存档加 `v` 版本段与版本门、manifest 精简、`backend()` 那个写法）。
+
+并线把两边按块裁到了一起，裁出来的是**缝合体**，后果有三类：
+
+| 类别 | 具体 | 症状 |
+|---|---|---|
+| 定义被裁、调用点留着 | `js/core/storage.js` 里的 `backend()` 定义换成 `available()` + `readItem/writeItem/dropItem`，调用点还写着 `backend()` | 模块求值即 `ReferenceError` ⇒ **整局不可玩**（`cos_load_sweep` 报 LOAD-ERROR） |
+| 旧路径与新路径同时在 | `load()` 里既走新解码 `decodeRecord`，又用旧的 `sanitizeRecords` 收尾 | 存档测试 4 条红：零信号记录没被丢、越界 best 没被丢 |
+| 页面与清单混搭 | `index.html` 是「远端侧的头 + 本地侧的身」，`manifest.webmanifest` 是远端侧那份精简的，`css/game.css` 混了两边 | 社交卡 og:url 不对、manifest 缺 start_url/scope、三张织理贴图不在产物里 ⇒ 部署集闸 7 条红 |
+
+**这一轮怎么收的**
+
+1. `js/core/storage.js` 回到本地侧那一份（持久层收口 + 两段式解码），**并保留远端侧的读档版本门**：
+   写档不带 `v` 段（闸定死了存档恰好五段：`daily/records/settings/stats/unlocked`），读档若见到
+   不认识的版本号整档丢弃 —— 升 v2 时旧客户端不会把新档当旧档读。两侧的能力都在，闸也不必改。
+2. `sw.js` 回到本地侧那一份：缓存桶名 `euclid-pwa-v1`（远端侧那份叫 `euclid-cos-v1-shell`，
+   测试的桩里没有 `addAll`，那份一装载就炸）、离线壳预取两个键、导航兜底与非 GET/跨源不接管。
+3. `index.html` / `manifest.webmanifest` / `css/game.css` 回到本地侧那一份：九张图标与真实尺寸、
+   `start_url`/`scope` 都是 `./`、社交卡绝对 URL 指向 `social/og-card.png`、底色五处同值
+   （`#12100e`：css 变量 / meta theme-color / manifest 两色 / Electron 窗口色）。
+4. `js/main.js` 末尾那一整块全屏实现删掉：它找的 `#btn-fullscreen` 在本仓从来不存在（真接线在
+   `js/hud.js` 的 `#fullscreen`）。被删那份带的能力（webkit/ms 前缀、不支持就置灰并说明）
+   **并进 `js/hud.js` 的那一份**，不是再留一份。
+5. 部署清单补收 `textures/`（css 的织理与火花）与 `social/`（社交卡）—— 页面引用着的位图，
+   产物里少一个就是线上 404，而本地闸照样全绿。
+6. `tools/assemble-site.sh` 的位图目录循环改了，`tools/deploy-set-selftest.mjs` 里 X1 那一刀的
+   针**改成从仓里现取**（原来钉死 `for d in icons assets; do`，清单一升级针就打空、那一刀没落地）。
+
+**闸与读数**
+
+* 一条断言没删、强度只升不降：`npm test`（check + 12 套件 + 文档腿）全绿，
+  storage 22/0、pwa 13/0、文档行号对账 15/0。
+* `tools/deploy-set.mjs`：**实数钉** `EXPECT_CHECKS 36 → 47`、`EXPECT_ROWS 55 → 79`
+  （页面回到本地侧那版 ⇒ 多解析出十一条路径；加上九张位图的 P1/P2 尺寸核对）。钉的是**实数**，
+  强度不变，R12/R13 本身没动。
+* `tools/deploy-set-selftest.mjs`：十三刀全发力（X10 阴性对照照旧不发力），rc=0。
+* `bash tools/verify.sh`：5 场景 **133 行断言 · 0 失败**（`@boot 22 · @play 29 · @routes 21 ·
+  @save 16 · @pointer 45`），console 干净。
+* `cos_load_sweep`：**LOADED**（并线后是 LOAD-ERROR）。
+
+**需人接手的两条**
+
+1. **存档的「版本段」与闸的「恰好五段」互斥**：远端侧那版写 `v: 1`，本地侧的存储闸
+   （`test/storage.test.mjs`，22 条）定死顶层恰好五段。本轮选了闸：写档不带 `v`，
+   读档保留版本门。若组织要写档也带版本号，就得改那条「五段」断言（闸是行为裁决者，
+   但改它需要拍板）。
+2. **`js/sw-register.js` 仍在仓里但页面已经不引它**（本地侧用 `js/pwa.js` 注册 service worker）。
+   本轮没删：闸与文档都没点名它，但仓里多一个重复注册路径总归是隐患，删不删请拍板。

@@ -18,7 +18,9 @@ cd "$HERE" || exit 2
 cp index.html manifest.webmanifest sw.js "$DEST/"
 cp -r css js "$DEST/"
 # 位图目录名不统一（icons/ 与 assets/ 都在用）：按存在与否收，缺的那个不是错误。
-for d in icons assets; do
+# textures/ 是这一版 css 的织理与火花贴图，social/ 是 og:image 指的那张社交卡：
+# 两者都真的被页面引用着，少拷一个就是线上 404，而本地闸照样全绿。
+for d in icons assets textures social; do
   [ -d "$d" ] && cp -r "$d" "$DEST/"
 done
 
