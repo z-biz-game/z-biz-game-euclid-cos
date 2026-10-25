@@ -19,6 +19,7 @@ import { persistent, store } from './core/storage.js';
 import { todayKey } from './core/rng.js';
 import { createAudio } from './core/audio.js';
 import { createClock } from './core/clock.js';
+import { haptics } from './haptics.js';
 import { mountHud } from './hud.js';
 import { pwaStatus, registerServiceWorker } from './pwa.js';
 import { createView } from './view.js';
@@ -242,12 +243,15 @@ function toast(msg, bad = false) {
 }
 
 // ------------------------------------------------------------------ the moves
+// 触觉分级（003 §0 的三档，见 js/haptics.js）：轻 tap 8ms / 中 correct 26ms / 重 wrong [14,40,14]。
+// ⚠️ 触觉是补路不是主路：navigator.vibrate 在 iOS Safari 上不存在，视觉与听觉必须先到位。
 function settle(result) {
   if (result.rejected) {
     game.match = result.state;
     clearKPreview();
     render();
     audio.nope();
+    haptics.wrong();  // 这一刀没落下去：玩家试的切法不成立（切法非法 / 还没轮到玩家 / 本局已结束）
     toast(result.rejected, true);
     return result;
   }
@@ -261,8 +265,10 @@ function settle(result) {
     if (won && game.mode === 'campaign') store.unlock(Math.min(lots.length, game.index + 1));
     game.match = { ...game.match, kPreview: null };
     if (won) audio.win(); else audio.loss();
+    haptics.wrong();  // 收官：金条铺满（赢）或对手铺满（输）——只有三档，终局归最重的那一档
   } else if (game.match.status === 'playing') {
     audio.cut();
+    haptics.tap();   // 玩家刚在金条上切下一刀：这一下真的落上去了
   }
   render();
   return result;
@@ -296,6 +302,7 @@ function autoWin() {
     game.record = store.finish(game.lot.id, { won, plies: st.plies, hints: game.hints });
     if (game.mode === 'daily') store.markDaily(game.lot.day, game.lot.id, { won });
     if (won) audio.win(); else audio.loss();
+    haptics.wrong();  // 照表收局：这一局当场分出胜负，终局归最重的那一档
   }
   clearKPreview();
   render();
@@ -311,6 +318,9 @@ function hintOnce() {
   game.match = { ...game.match, line: h.line };
   render();
   toast(h.line, !h.winning);
+  // 提示是引擎自己的一条判断：有胜口时它点名了当下成立的唯一推理（谜题推进了），
+  // 局面已经必败时它给的是坏消息 —— 同一档要分开，因为玩家听到的是两件事。
+  if (h.winning) haptics.correct(); else haptics.wrong();
   return h;
 }
 
@@ -320,7 +330,8 @@ function undo() {
   game.settled = r.state.status === 'playing' ? false : game.settled;
   clearKPreview();
   render();
-  if (r.rejected) { audio.nope(); toast(r.rejected, true); }
+  if (r.rejected) { audio.nope(); haptics.wrong(); toast(r.rejected, true); }
+  else haptics.tap();  // 玩家刚撤销一步：盘面退了一步
   return r.state;
 }
 
